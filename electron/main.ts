@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
+import { registerListeners } from './ipcHandler'
 
 let mainWindow: BrowserWindow | null
 
@@ -27,15 +28,6 @@ function createWindow () {
 
   mainWindow.on('closed', () => {
     mainWindow = null
-  })
-}
-
-async function registerListeners () {
-  /**
-   * This comes from bridge integration, check bridge.ts
-   */
-  ipcMain.on('message', (_, message) => {
-    console.log(message)
   })
 }
 
