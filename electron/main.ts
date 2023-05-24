@@ -1,19 +1,26 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
-import { registerListeners } from './ipcHandler'
+import { app, BrowserWindow } from 'electron'
+import isDev from "electron-is-dev"
+import path from 'path'
+import Handlers from './handler/Handlers'
 
-let mainWindow: BrowserWindow | null
+let mainWindow: BrowserWindow | undefined | null
+let handlers: Handlers | undefined
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string
 
-// const assetsPath =
-//   process.env.NODE_ENV === 'production'
-//     ? process.resourcesPath
-//     : app.getAppPath()
+const assetsPath = isDev === true? process.resourcesPath: app.getAppPath()
+
+const initialize = async () =>{
+  createWindow();
+  handlers = new Handlers();
+  handlers.initialize();
+  handlers.databaseHandler?.initialize();
+}
 
 function createWindow () {
   mainWindow = new BrowserWindow({
-    // icon: path.join(assetsPath, 'assets', 'icon.png'),
+    icon: path.join(assetsPath, 'assets', 'icon.png'),
     width: 1100,
     height: 700,
     backgroundColor: '#191622',
@@ -25,15 +32,19 @@ function createWindow () {
   })
 
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY)
-
   mainWindow.on('closed', () => {
     mainWindow = null
   })
 }
 
-app.on('ready', createWindow)
+app.on('ready', initialize)
   .whenReady()
-  .then(registerListeners)
+  .then(() => {
+    if (mainWindow) {
+      handlers?.ipcHandler?.initialize(mainWindow)      
+      handlers?.exchangeRateHandler?.registerIPCListeners();  // should be call after end ipcHandler intialize()
+    }
+  })
   .catch(e => console.error(e))
 
 app.on('window-all-closed', () => {

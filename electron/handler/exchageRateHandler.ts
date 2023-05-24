@@ -1,37 +1,65 @@
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain, BrowserWindow, IpcMainEvent } from 'electron';
 import { IExchageRateDunamuResponse, IExchageRateInfo } from './../../interface/IExchangeRate';
 import { EXCHANGE_RATE_URL } from '../../constants/enum'
 import { IPC_CMD } from '../../constants/ipcCmd';
+import Handlers from './Handlers';
 
 export default class ExchangeRateHander {
+  handlers: Handlers | undefined;
   monitorInterval: any;
-  window: BrowserWindow | undefined | null;
-  constructor(mainWindow: BrowserWindow | null) {
-    this.window = mainWindow;
+
+  constructor(handlers: Handlers) {
+    console.log(`create ExchangeRateHander.`);
+    this.handlers = handlers;
   }
 
-  start = async () => {
+  public registerIPCListeners = () => {
+    if (!this.handlers?.ipcHandler) {
+      console.error(`handlers?.ipcHandler is null. skip registerIPCListeners.`);
+      return;
+    }
+    this.handlers?.ipcHandler?.registerIPCListeners(IPC_CMD.SET_EXCHANGE_RATE_MONITOR_ON_OFF, async (evt: IpcMainEvent, onOnff: boolean) => {
+        console.log("[IPC][SET_EXCHANGE_RATE_MONITOR_ON_OFF] onOnff: ", onOnff)       
+        if (!this.handlers?.exchangeRateHandler) {
+            console.error(`exchangeRateHandler is null. skip set SET_EXCHANGE_RATE_MONITOR_ON_OFF.`);
+            evt.reply(IPC_CMD.SET_EXCHANGE_RATE_MONITOR_ON_OFF_ACK, false);
+            return;
+        }
+        if (onOnff == true) {
+            this.handlers?.exchangeRateHandler.start();
+            this.handlers?.exchangeRateHandler.fetchExchageRate()
+            .then((data: any) => {
+              evt.reply(IPC_CMD.SET_EXCHANGE_RATE_MONITOR_ON_OFF_ACK, true);
+              evt.reply(IPC_CMD.NOTIFY_EXCHANGE_RATE_INFOS, data);
+            })
+            .catch((err) => {
+              console.log('Fail to fetchData ExchangeRate');
+            });
+        } else {
+            this.handlers?.exchangeRateHandler.stop();
+        }
+    })
+  }
+
+  public start = async () => {
     if (this.monitorInterval != null) {
         console.log('ExchangeRate monitor alread started. skip start.');
         return;
     }
     console.log('ExchangeRate monitor start');
-    let cnt = 0;
     this.monitorInterval = setInterval(() => {
-      cnt++;
-      const msgTemplate = (pingPong: string) => `IPC test: ${pingPong}`;
       this.fetchExchageRate()
         .then((data: any) => {
-          console.log('Success to fetchData ExchangeRate');
-          this.window?.webContents.send(IPC_CMD.NOTIFY_EXCHANGE_RATE_INFOS, data)
+          // console.log('Success to fetchData ExchangeRate');
+          this.handlers?.ipcHandler?.sendMessage(IPC_CMD.NOTIFY_EXCHANGE_RATE_INFOS, data);
         })
         .catch((err) => {
-          console.log('Fail to fetchData ExchangeRate');
+          console.log('Fail to fetchData ExchangeRate. err:', err);
         });
     }, 2000);
   };
 
-  stop = () => {
+  public stop = () => {
     console.log('ExchangeRate monitor stop');
     if (this.monitorInterval != null) {
         clearInterval(this.monitorInterval);
@@ -39,7 +67,7 @@ export default class ExchangeRateHander {
     }
   }
 
-  async fetchExchageRate() {
+  public fetchExchageRate = async () => {
     var request = require('request');
     var headers = {
       'Content-Type': 'application/json',
@@ -52,9 +80,9 @@ export default class ExchangeRateHander {
     return new Promise((resolve, reject) => {
       request(options, callback);
       function callback(error: any, response: any, body: any) {
-        console.log(`response: ${response}`);
+        // console.log(`response: ${response}`);
         if (!error && response.statusCode == 200) {
-          console.log(body);
+          // console.log(body);
           const response: [IExchageRateDunamuResponse] = JSON.parse(body);
           if (response.length > 0) {
             const exchangeRateInfo: IExchageRateInfo = {

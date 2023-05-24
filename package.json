@@ -5,6 +5,7 @@
   "description": "Boilerplate using Electron + TypeScript + React.",
   "main": ".webpack/main",
   "scripts": {
+    "postinstall": "install-app-deps",
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
@@ -13,15 +14,22 @@
   "keywords": [],
   "license": "MIT",
   "dependencies": {
+    "@types/nedb": "^1.8.13",
     "ajv": "^8.12.0",
+    "electron-builder": "^23.6.0",
+    "electron-is-dev": "^2.0.0",
     "electron-store": "^8.1.0",
     "lodash": "^4.17.21",
+    "nedb": "^1.8.0",
+    "nedb-promises": "^6.2.1",
+    "node-binance-api": "^0.13.1",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "react-hot-loader": "^4.13.0",
     "react-router-dom": "^6.11.2",
     "semantic-ui-css": "^2.5.0",
-    "semantic-ui-react": "^2.1.4"
+    "semantic-ui-react": "^2.1.4",
+    "use-upbit-api": "^2.0.9"
   },
   "devDependencies": {
     "@babel/core": "^7.17.8",
@@ -53,8 +61,8 @@
   "config": {
     "forge": {
       "packagerConfig": {
-        "name": "Electron starter",
-        "executableName": "electron-starter",
+        "name": "kimpBot",
+        "executableName": "kimpBot",
         "icon": "assets/icon",
         "extraResource": [
           "assets"
@@ -65,6 +73,7 @@
           "@electron-forge/plugin-webpack",
           {
             "mainConfig": "./webpack/main.webpack.js",
+            "devContentSecurityPolicy": "connect-src 'self' * 'unsafe-eval'",
             "renderer": {
               "config": "./webpack/renderer.webpack.js",
               "entryPoints": [
@@ -85,7 +94,7 @@
         {
           "name": "@electron-forge/maker-squirrel",
           "config": {
-            "name": "Electron Starter"
+            "name": "kimpBot"
           }
         },
         {

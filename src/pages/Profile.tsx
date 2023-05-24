@@ -21,7 +21,9 @@ const Profile = () => {
     }
     const [ keyInputValues, setKeyInputValues ] = useState<API_KEY_INFOS_INPUT>(tempKeyInputValues);
     useEffect(() => {
-        return () => {}
+        return () => {
+            console.log("unMount Dashboard.");
+        }
     }, []);
 
     useEffect(() => {

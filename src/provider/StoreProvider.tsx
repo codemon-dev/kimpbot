@@ -12,7 +12,7 @@ export const StoreProvider = ({ children }: any) => {
         setApiKeyInfos([...apiKeyInfos]);
       })
       window.Main.on(IPC_CMD.NOTIFY_EXCHANGE_RATE_INFOS, (exchangeRate: IExchageRateInfo) => {
-        setExchangeRateInfo({...exchangeRate});
+        setExchangeRateInfo({...exchangeRate})
       })
       window.Main.storeGetApiKeyInfos();
       window.Main.setExchageRateMonitorOnOff(true);
@@ -25,16 +25,16 @@ export const StoreProvider = ({ children }: any) => {
       console.log("IPCSetApiKeyInfos");
       window.Main.storeSetApiKeyInfos(apiKeyInfos);
     };
-
+ 
     const IPCSetExchageRateMonitorOnOff = async (onOff: boolean) => {
-      console.log("IPCSetExchageRateMonitorOnOff");
+      console.log("IPCSetExchageRateMonitorOnOff. onOff: ", onOff);
       window.Main.setExchageRateMonitorOnOff(onOff);
     };
 
     const value: any = {
       apiKeyInfos,
-      IPCSetApiKeyInfos: IPCSetApiKeyInfos,
       exchangeRateInfo,
+      IPCSetApiKeyInfos: IPCSetApiKeyInfos,
       IPCSetExchageRateMonitorOnOff: IPCSetExchageRateMonitorOnOff,
     };
   
