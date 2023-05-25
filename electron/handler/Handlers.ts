@@ -14,9 +14,9 @@ export default class Handlers {
     }
 
     public initialize = () => {
+        this.databaseHandler = new DatabaseHandler(this);
         this.exchangeRateHandler = new ExchangeRateHander(this);
         this.ipcHandler = new IPCHandler(this);
-        this.databaseHandler = new DatabaseHandler(this);
         this.binanceHandler = new BinanceHander(this);
     }
 }

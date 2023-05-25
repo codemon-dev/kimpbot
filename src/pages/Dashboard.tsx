@@ -65,7 +65,7 @@ const Dashboard = () => {
     useEffect(() => {
         console.log(exchangeRateInfo)
         setExchangeRateInfos({...exchangeRateInfo});
-        return () => {console.log("pppppppppppp");}
+        return () => {}
     }, [exchangeRateInfo]);
 
     
@@ -94,8 +94,8 @@ const Dashboard = () => {
             <Divider />
 
             <Container>
-                {socketData?.map((data) => (
-                    <Statistic.Group>
+                {socketData?.map((data, index) => (
+                    <Statistic.Group key={`socketData_title_${index}`}>
                         <Statistic>
                             <Statistic.Value>{data.code}</Statistic.Value>
                             <Statistic.Label>code</Statistic.Label>
@@ -123,8 +123,8 @@ const Dashboard = () => {
                         </Table.Row>
                     </Table.Header>
                     <Table.Body>
-                        {obj?.socketData?.orderbook_units.map((data) => (
-                            <Table.Row>
+                        {obj?.socketData?.orderbook_units.map((data, index) => (
+                            <Table.Row key={`orderbook_units_${index}`}>
                                 <Table.Cell>{data.ask_price}</Table.Cell>
                                 <Table.Cell>{data.ask_size}</Table.Cell>
                                 <Table.Cell>{data.bid_price}</Table.Cell>

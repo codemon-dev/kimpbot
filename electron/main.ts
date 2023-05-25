@@ -11,14 +11,18 @@ declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string
 
 const assetsPath = isDev === true? process.resourcesPath: app.getAppPath()
 
-const initialize = async () =>{
-  createWindow();
+const initializeApp = async () => {
+  console.log("initializeApp.");
   handlers = new Handlers();
   handlers.initialize();
-  handlers.databaseHandler?.initialize();
+  await handlers.databaseHandler?.initialize();
+  if (mainWindow) {
+    handlers?.ipcHandler?.initialize(mainWindow)      
+    handlers?.exchangeRateHandler?.registerIPCListeners();  // should be call after end ipcHandler intialize()
+  }
 }
 
-function createWindow () {
+const createWindow = () => {
   mainWindow = new BrowserWindow({
     icon: path.join(assetsPath, 'assets', 'icon.png'),
     width: 1100,
@@ -37,13 +41,10 @@ function createWindow () {
   })
 }
 
-app.on('ready', initialize)
+app.on('ready', createWindow)
   .whenReady()
   .then(() => {
-    if (mainWindow) {
-      handlers?.ipcHandler?.initialize(mainWindow)      
-      handlers?.exchangeRateHandler?.registerIPCListeners();  // should be call after end ipcHandler intialize()
-    }
+    initializeApp();
   })
   .catch(e => console.error(e))
 

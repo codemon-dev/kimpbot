@@ -22,14 +22,14 @@ export default class ExchangeRateHander {
         console.log("[IPC][SET_EXCHANGE_RATE_MONITOR_ON_OFF] onOnff: ", onOnff)       
         if (!this.handlers?.exchangeRateHandler) {
             console.error(`exchangeRateHandler is null. skip set SET_EXCHANGE_RATE_MONITOR_ON_OFF.`);
-            evt.reply(IPC_CMD.SET_EXCHANGE_RATE_MONITOR_ON_OFF_ACK, false);
+            evt.reply(IPC_CMD.SET_EXCHANGE_RATE_MONITOR_ON_OFF, false);
             return;
         }
         if (onOnff == true) {
             this.handlers?.exchangeRateHandler.start();
             this.handlers?.exchangeRateHandler.fetchExchageRate()
             .then((data: any) => {
-              evt.reply(IPC_CMD.SET_EXCHANGE_RATE_MONITOR_ON_OFF_ACK, true);
+              evt.reply(IPC_CMD.SET_EXCHANGE_RATE_MONITOR_ON_OFF, true);
               evt.reply(IPC_CMD.NOTIFY_EXCHANGE_RATE_INFOS, data);
             })
             .catch((err) => {

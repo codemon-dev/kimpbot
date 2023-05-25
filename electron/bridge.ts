@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CMD } from '../constants/ipcCmd'
-import { API_KEY_INFO } from '../constants/types'
+import { IReqExchageAccountInfo } from './handler/databaseHandler'
+import { ExchangeAccountInfo } from '../db/schemas/ExchangeAccountInfo'
 
 export const api = {
   sendMessage: (message: string) => {
@@ -14,13 +15,25 @@ export const api = {
   once: (channel: string, callback: Function) => {
     ipcRenderer.once(channel, (_, data) => callback(data))
   },
-
-  storeSetApiKeyInfos: (apiKeyInfo: API_KEY_INFO[]) => {
-    ipcRenderer.send(IPC_CMD.STORE_SET_APIKEY_INFOS, apiKeyInfo)
+  
+  getExchangeAccountInfos: (req: IReqExchageAccountInfo) => {
+    ipcRenderer.send(IPC_CMD.STORE_GET_EXCHANGE_ACCOUNT_INFOS, req)
+  },
+  
+  addExchangeAccountInfos: (exchangeAccountInfos: ExchangeAccountInfo[]) => {
+    ipcRenderer.send(IPC_CMD.STORE_ADD_EXCHANGE_ACCOUNT_INFOS, exchangeAccountInfos)
   },
 
-  storeGetApiKeyInfos: () => {
-    ipcRenderer.send(IPC_CMD.STORE_GET_APIKEY_INFOS)
+  updateExchangeAccountInfos: (exchangeAccountInfos: ExchangeAccountInfo[]) => {
+    ipcRenderer.send(IPC_CMD.STORE_UPDATE_EXCHANGE_ACCOUNT_INFOS, exchangeAccountInfos)
+  },
+
+  deleteExchangeAccountInfos: (ids: string[]) => {
+    ipcRenderer.send(IPC_CMD.STORE_DELETE_EXCHANGE_ACCOUNT_INFOS, ids)
+  },
+  
+  deleteAllExchangeAccountInfos: (userId: string) => {
+    ipcRenderer.send(IPC_CMD.STORE_DELETE_ALL_EXCHANGE_ACCOUNT_INFOS, userId)
   },
 
   setExchageRateMonitorOnOff: (onOff: boolean) => {
