@@ -7,3 +7,4 @@ packages
 .webpack
 out
 db/data
+yarn-error.log
