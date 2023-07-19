@@ -1,9 +1,14 @@
 import { app } from "electron"
 import crypto, { CipherCCMTypes, CipherKey, KeyObject } from "crypto"
 import isDev from "electron-is-dev";
+import { DATA_LOG_DIR_PATH } from "../constants/constants";
 
 export const getDBFilePath = (filename: string) => {
     return isDev ? `${process.cwd()}/db/data/${filename}`: `${app.getPath("userData")}/db/data/${filename}`;
+}
+
+export const getPrimiumnFilePath = () => {
+    return DATA_LOG_DIR_PATH;
 }
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'abcdefghijklmnop'.repeat(2) // Must be 256 bits (32 characters)

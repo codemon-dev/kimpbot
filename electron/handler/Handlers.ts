@@ -1,22 +1,39 @@
-import ExchangeRateHander from "./exchageRateHandler";
+import CurrencyHandler from "./currencyHandler";
 import DatabaseHandler from "./databaseHandler";
 import BinanceHander from "./binanceHandler";
 import IPCHandler from "./ipcHandler";
+import StoreHander from "./storeHandler";
+import marketInfoHandler from "./marketInfoHandler";
+import UpbitHandler from "./upbitHandler";
+import jobWorkerHandler from "./jobWorkerHandler";
+import { COIN_PAIR } from "../../constants/enum";
+import primiumHandler from "./primiumHandler";
+import LogHandler from "./logHandler";
 
 export default class Handlers {
-    public exchangeRateHandler: ExchangeRateHander | undefined;
+    public logHandler: LogHandler = new LogHandler(this);
+    public currencyHandler: CurrencyHandler | undefined;
     public ipcHandler: IPCHandler | undefined;
     public databaseHandler: DatabaseHandler | undefined;
+    public storeHandler: StoreHander | undefined;
     public binanceHandler: BinanceHander | undefined;
-
+    public upbitHandler: UpbitHandler | undefined;
+    public marketInfoHandler: marketInfoHandler | undefined;
+    public jobWorkerHandler: jobWorkerHandler | undefined;
+    public primiumHandler: primiumHandler | undefined;    
     constructor() {
-        console.log(`create IPCHHandlersandler.`);
+        this.logHandler.log.info(`create Handlers.`);
     }
 
     public initialize = () => {
+        this.storeHandler = new StoreHander(this);
         this.databaseHandler = new DatabaseHandler(this);
-        this.exchangeRateHandler = new ExchangeRateHander(this);
-        this.ipcHandler = new IPCHandler(this);
+        this.currencyHandler = new CurrencyHandler(this);
+        this.upbitHandler = new UpbitHandler(this);
         this.binanceHandler = new BinanceHander(this);
+        this.marketInfoHandler = new marketInfoHandler(this);
+        this.jobWorkerHandler = new jobWorkerHandler(this);
+        this.primiumHandler = new primiumHandler(this);
+        this.ipcHandler = new IPCHandler(this);        
     }
 }

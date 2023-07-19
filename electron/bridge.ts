@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CMD } from '../constants/ipcCmd'
 import { IReqExchageAccountInfo } from './handler/databaseHandler'
 import { ExchangeAccountInfo } from '../db/schemas/ExchangeAccountInfo'
+import { IUserInfo } from '../interface/IUserInfo'
+import { IReqMarketInfo } from '../interface/IMarketInfo'
+import { IJobWorker } from '../interface/ITradeInfo'
 
 export const api = {
   sendMessage: (message: string) => {
@@ -10,6 +13,10 @@ export const api = {
 
   on: (channel: string, callback: Function) => {
     ipcRenderer.on(channel, (_, data) => callback(data))
+  },
+
+  off: (channel: string, callback: Function) => {
+    ipcRenderer.off(channel, (_, data) => callback(data))
   },
 
   once: (channel: string, callback: Function) => {
@@ -38,6 +45,54 @@ export const api = {
 
   setExchageRateMonitorOnOff: (onOff: boolean) => {
     ipcRenderer.send(IPC_CMD.SET_EXCHANGE_RATE_MONITOR_ON_OFF, onOff)
+  },
+
+  getEnvInfo: () => {
+    ipcRenderer.send(IPC_CMD.GET_ENV_INFO)
+  },
+
+  setUserInfo: (uerInfo: IUserInfo | null) => {
+    ipcRenderer.send(IPC_CMD.SET_USER_INFO, uerInfo)
+  },
+
+  setStoreData: (key: string, data: any) => {
+    ipcRenderer.send(IPC_CMD.SET_STORE_DATE, key, data)
+  },
+
+  getStoreData: (key: string) => {
+    ipcRenderer.send(IPC_CMD.GET_STORE_DATE, key)
+  },
+
+  requestMarketInfo: (req: IReqMarketInfo) => {
+    ipcRenderer.send(IPC_CMD.REQUEST_MARKET_INFO, req)
+  },
+
+  getAllJobWorker: () => {
+    ipcRenderer.send(IPC_CMD.GET_ALL_JOB_WORKERS)
+  },
+
+  addJobWorker: (jobWorker: IJobWorker) => {
+    ipcRenderer.send(IPC_CMD.ADD_JOB_WORKER, jobWorker)
+  },
+
+  deleteJobWorker: (id: string) => {
+    ipcRenderer.send(IPC_CMD.DELETE_JOB_WORKER, id)
+  },
+
+  startJobWorkers: (jobWorkers: IJobWorker[]) => {
+    ipcRenderer.send(IPC_CMD.START_JOB_WORKERS, jobWorkers)
+  },
+
+  stopJobWorkers: (ids: string[]) => {
+    ipcRenderer.send(IPC_CMD.STOP_JOB_WORKERS, ids)
+  },
+
+  getAllTradeJobInfo: () => {
+    ipcRenderer.send(IPC_CMD.GET_ALL_TRADE_JOB_INFOS)
+  },
+
+  requestPrimiumChartData: () => {
+    ipcRenderer.send(IPC_CMD.REQUEST_PRIMIUM_CHART_DATA)
   },
 }
 

@@ -2,7 +2,8 @@ import { EXCHANGE } from "../../constants/enum"
 
 export type ExchangeAccountInfo = {
     _id?: string | null,
-    userId: string,
+    nickname?: string | null,
+    email?: string,
     exchange: EXCHANGE,
     isConfirmed: boolean,
     apiKey: string,

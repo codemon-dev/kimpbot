@@ -3,13 +3,17 @@ import { EXCHANGE } from "../../constants/enum";
 import { decrypt, encrypt, getDBFilePath } from "../../util/databaseUtil"
 import { ExchangeAccountInfo } from "../schemas/ExchangeAccountInfo";
 import { IReqExchageAccountInfo } from "../../electron/handler/databaseHandler";
+import Handlers from "../../electron/handler/Handlers";
+
 
 const databaseName: string = "exchange_account_info.db"
 
 export default class ExchangeAccountInfoDBApi {
     public db: Nedb | undefined;    
     public isOnLoaded: boolean = false;
-    constructor(_onload: any) {
+    public handlers: Handlers | undefined;
+    constructor(handlers: Handlers | undefined, _onload: any) {
+        handlers = handlers;
         const option: Nedb.DataStoreOptions = {
             filename: getDBFilePath(databaseName),
             autoload: true,
@@ -17,11 +21,11 @@ export default class ExchangeAccountInfoDBApi {
             onload: (err) => {
                 _onload(err);
                 if (err) {
-                    console.log(`Fail to load ${databaseName}. err: ${err}`);
+                    handlers?.logHandler?.log?.error(`Fail to load ${databaseName}. err: ${err}`)
                     this.db = undefined;
                     this.isOnLoaded = false;
                 } else {
-                    console.log(`success to load ${databaseName}.`);
+                    handlers?.logHandler?.log?.info(`success to load ${databaseName}.`)
                     this.isOnLoaded = true;
                     //this.db?.ensureIndex({ fieldName: 'userId', unique: true})
                 }
@@ -30,17 +34,17 @@ export default class ExchangeAccountInfoDBApi {
         this.db = new Nedb(option)
     }
 
-    private encryptExchangeAccountInfos = (accoutInfos: ExchangeAccountInfo[]) => {
+    private encryptExchangeAccountInfos = (accoutInfos: ExchangeAccountInfo[], key: string) => {
         let ret: ExchangeAccountInfo[] = [];
         accoutInfos.forEach((info:ExchangeAccountInfo) => {
-            info.apiKey = encrypt(info.apiKey, "");
-            info.secretKey = encrypt(info.secretKey, "");
+            info.apiKey = encrypt(info.apiKey, key);
+            info.secretKey = encrypt(info.secretKey, key);
             ret.push({...info})
         })
         return ret;
     }
 
-    private decryptExchangeAccountInfos = (accoutInfos: ExchangeAccountInfo[]) => {
+    private decryptExchangeAccountInfos = (accoutInfos: ExchangeAccountInfo[], key: string ) => {
         let ret: ExchangeAccountInfo[] = [];
         accoutInfos.forEach((info:ExchangeAccountInfo) => {
             info.apiKey = decrypt(info.apiKey) ?? "";
@@ -50,34 +54,34 @@ export default class ExchangeAccountInfoDBApi {
         return ret;
     }
 
-    private getExchangeAccountInfosCallback = (err: any, docs: ExchangeAccountInfo[], resolve: any, reject: any) => {
+    private getExchangeAccountInfosCallback = (err: any, docs: ExchangeAccountInfo[], key: string, resolve: any, reject: any) => {
         if (err) {
-            console.log(`Fail to getExchangeAccountInfosCallback. err: ${err}`);
+            this.handlers?.logHandler?.log?.error(`Fail to getExchangeAccountInfosCallback. err: ${err}`);
             reject(null);
         };
         if (docs) {
-            docs.forEach(doc => {
-                console.log(doc);
-            });
-            resolve(this.decryptExchangeAccountInfos(docs));
+            // docs.forEach(doc => {
+            //     this.handlers?.logHandler?.log?.info(doc);
+            // });
+            resolve(this.decryptExchangeAccountInfos(docs, key));
         }
         resolve([]);
     }
 
-    public addExchangeAccountInfos = async (exchangeAccountInfos: ExchangeAccountInfo[]): Promise<any> => {
+    public addExchangeAccountInfos = async (exchangeAccountInfos: ExchangeAccountInfo[], key: string): Promise<any> => {
         let promises: any = []
         exchangeAccountInfos?.forEach((info: ExchangeAccountInfo) => {
-            promises.push(this.addExchangeAccountInfo(info))
+            promises.push(this.addExchangeAccountInfo(info, key))
         })
         return await Promise.all(promises);
     }
 
-    public addExchangeAccountInfo = async (exchangeAccountInfo: ExchangeAccountInfo): Promise<any> => {
+    public addExchangeAccountInfo = async (exchangeAccountInfo: ExchangeAccountInfo, key: string): Promise<any> => {
         return new Promise((resolve, reject) => {
-            console.log(`addExchangeAccountInfo. exchange: ${exchangeAccountInfo.exchange}`);
-            this.db?.insert(this.encryptExchangeAccountInfos([exchangeAccountInfo])[0], (err, doc) => {
+            this.handlers?.logHandler?.log?.info(`addExchangeAccountInfo. exchange: ${exchangeAccountInfo.exchange}`);
+            this.db?.insert(this.encryptExchangeAccountInfos([exchangeAccountInfo], key)[0], (err, doc) => {
                 if (err) { 
-                    console.error(`fail to addExchangeAccountInfo. err: ${err}`)
+                    this.handlers?.logHandler?.log?.error(`fail to addExchangeAccountInfo. err: ${err}`)
                     reject(null);
                 } else {
                     resolve(doc);
@@ -88,13 +92,13 @@ export default class ExchangeAccountInfoDBApi {
 
     public deleteAllExchangeAccountInfo = async (userId: string): Promise<any> => {
         return new Promise((resolve: any, reject: any) => {
-            console.log(`deleteExchangeAccdeleteAllExchangeAccountInfoountInfo. userId: ${userId}}`);    
+            this.handlers?.logHandler?.log?.info(`deleteExchangeAccdeleteAllExchangeAccountInfoountInfo. userId: ${userId}}`);    
             this.db?.remove({userId}, (err: Error | null) => {
                 if (err) {
-                    console.error(`fail to deleteAllExchangeAccountInfo. err: ${err}`)
+                    this.handlers?.logHandler?.log?.error(`fail to deleteAllExchangeAccountInfo. err: ${err}`)
                     reject(null);
                 }
-                console.log(`success deleteAllExchangeAccountInfo. id: ${userId}`)
+                this.handlers?.logHandler?.log?.info(`success deleteAllExchangeAccountInfo. id: ${userId}`)
                 resolve(userId);
             })
         })
@@ -103,7 +107,7 @@ export default class ExchangeAccountInfoDBApi {
     public deleteExchangeAccountInfos = async (ids: string[] | undefined): Promise<any> => {
         let promises: any = []
         if (!ids) {
-            console.error(`ids is null. skip STORE_DELETE_EXCHANGE_ACCOUNT_INFOS`)
+            this.handlers?.logHandler?.log?.error(`ids is null. skip STORE_DELETE_EXCHANGE_ACCOUNT_INFOS`)
             return null;
         }
         ids?.forEach((id: string) => {
@@ -114,48 +118,48 @@ export default class ExchangeAccountInfoDBApi {
 
     public deleteExchangeAccountInfo = async (id: string): Promise<any> =>  {
         return new Promise((resolve: any, reject: any) => {
-            console.log(`deleteExchangeAccountInfo. id: ${id}}`);    
+            this.handlers?.logHandler?.log?.info(`deleteExchangeAccountInfo. id: ${id}}`);    
             this.db?.remove({_id: id}, (err: Error | null) => {
                 if (err) {
-                    console.error(`fail to deleteExchangeAccountInfo. err: ${err}`)
+                    this.handlers?.logHandler?.log?.error(`fail to deleteExchangeAccountInfo. err: ${err}`)
                     reject(null);
                 }
-                console.log(`success deleteExchangeAccountInfo. id: ${id}`)
+                this.handlers?.logHandler?.log?.info(`success deleteExchangeAccountInfo. id: ${id}`)
                 resolve(id);
             })
         })
     }
 
-    public updateExchangeAccountInfos = async (ExchangeAccountInfos: ExchangeAccountInfo[]): Promise<any> => {
+    public updateExchangeAccountInfos = async (ExchangeAccountInfos: ExchangeAccountInfo[], key: string): Promise<any> => {
         let promises: any = []
         ExchangeAccountInfos?.forEach((info: ExchangeAccountInfo) => {
-            promises.push(this.updateExchangeAccountInfo(info));
+            promises.push(this.updateExchangeAccountInfo(info, key));
         })
         return await Promise.all(promises);
     }
 
-    public updateExchangeAccountInfo = async (exchangeAccountInfo: ExchangeAccountInfo): Promise<any> => {
+    public updateExchangeAccountInfo = async (exchangeAccountInfo: ExchangeAccountInfo, key: string): Promise<any> => {
         let options: Nedb.UpdateOptions = {
             multi: false,
             upsert: true,
             returnUpdatedDocs: true
         }   
         if (exchangeAccountInfo._id == null) {
-            console.error("id is null. skip updateExchangeAccountInfo.");
+            this.handlers?.logHandler?.log?.error("id is null. skip updateExchangeAccountInfo.");
             return null;
         }
         return new Promise((resolve, reject) => {
-            console.log(`updateExchangeAccountInfo. id:${exchangeAccountInfo._id}, exchange: ${exchangeAccountInfo.exchange}}`);
+            this.handlers?.logHandler?.log?.info(`updateExchangeAccountInfo. id:${exchangeAccountInfo._id}, exchange: ${exchangeAccountInfo.exchange}}`);
             this.db?.update(
                 { _id: exchangeAccountInfo._id }, 
-                this.encryptExchangeAccountInfos([exchangeAccountInfo])[0],
+                this.encryptExchangeAccountInfos([exchangeAccountInfo], key)[0],
                 options,
                 (err: Error | null, numberOfUpdated: number, affectedDocuments: any, upsert: boolean) => {
                     if (err) { 
-                        console.error(`fail to updateExchangeAccountInfo. err: ${err}`)
+                        this.handlers?.logHandler?.log?.error(`fail to updateExchangeAccountInfo. err: ${err}`)
                         reject(null);
                     } else {
-                        console.log(`success updateExchangeAccountInfo. numberOfUpdated: ${numberOfUpdated}, upsert: ${upsert}`)
+                        this.handlers?.logHandler?.log?.info(`success updateExchangeAccountInfo. numberOfUpdated: ${numberOfUpdated}, upsert: ${upsert}`)
                         resolve(affectedDocuments);
                     }
                 }
@@ -163,17 +167,27 @@ export default class ExchangeAccountInfoDBApi {
         })
     }
 
-    public getExchangeAccountInfos = async (req: IReqExchageAccountInfo): Promise<any> => {
+    public getExchangeAccountInfos = async (req: IReqExchageAccountInfo, key: string): Promise<any> => {
         return new Promise((resolve, reject) => {
-            if (!req.userId) { resolve(null) };
-            if (req.exchange) {
-                this.db?.find({userId: req.userId, exchange: req.exchange}, (err: any, docs: ExchangeAccountInfo[]) => {
-                    this.getExchangeAccountInfosCallback(err, docs, resolve, reject);
+            if (req.id) {
+                this.db?.find({_id: req.id}, (err: any, docs: ExchangeAccountInfo[]) => {
+                    this.getExchangeAccountInfosCallback(err, docs, key, resolve, reject);
                 })
             } else {
-                this.db?.find({userId: req.userId}, (err: any, docs: ExchangeAccountInfo[]) => {
-                    this.getExchangeAccountInfosCallback(err, docs, resolve, reject);
-                })
+                if (!req.email) { resolve(null) };
+                if (req.exchange) {
+                    this.db?.find({email: req.email, exchange: req.exchange}, (err: any, docs: ExchangeAccountInfo[]) => {
+                        this.getExchangeAccountInfosCallback(err, docs, key, resolve, reject);
+                    })
+                } else if (req.id) {
+                    this.db?.find({email: req.email, _id: req.id}, (err: any, docs: ExchangeAccountInfo[]) => {
+                        this.getExchangeAccountInfosCallback(err, docs, key, resolve, reject);
+                    })
+                } else {
+                    this.db?.find({email: req.email}, (err: any, docs: ExchangeAccountInfo[]) => {
+                        this.getExchangeAccountInfosCallback(err, docs, key, resolve, reject);
+                    })
+                }
             }
         })
     }

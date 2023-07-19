@@ -8,6 +8,7 @@ import { AuthProvider } from './provider/AuthProvider';
 import { ProtectedRoute } from './pages/ProtectedRoute';
 import 'semantic-ui-css/semantic.min.css'
 import { StoreProvider } from './provider/StoreProvider';
+import PrimiumChart from './pages/PrimiumChart';
 
 export const AuthContext = React.createContext(null);
 export const StoreContext = React.createContext(null);
@@ -15,8 +16,8 @@ export const StoreContext = React.createContext(null);
 export const App: React.FC = () => {
   return (
     <HashRouter>
-      <AuthProvider>
-        <StoreProvider>
+      <StoreProvider>
+        <AuthProvider>
           <Navigation />
           <Routes>
             <Route path="/" element={<Auth />} />
@@ -31,9 +32,14 @@ export const App: React.FC = () => {
                 <Profile />
               </ProtectedRoute>
             } />
+            <Route path="primiumChart" element={
+              <ProtectedRoute>
+                <PrimiumChart />
+              </ProtectedRoute>
+            } />
           </Routes>
-        </StoreProvider>
-      </AuthProvider>
+        </AuthProvider>
+      </StoreProvider>
     </HashRouter>
   );
 }

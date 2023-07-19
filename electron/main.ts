@@ -2,6 +2,8 @@ import { app, BrowserWindow } from 'electron'
 import isDev from "electron-is-dev"
 import path from 'path'
 import Handlers from './handler/Handlers'
+import { COIN_PAIR, COIN_SYMBOL, EXCHANGE } from '../constants/enum'
+
 
 let mainWindow: BrowserWindow | undefined | null
 let handlers: Handlers | undefined
@@ -17,8 +19,19 @@ const initializeApp = async () => {
   handlers.initialize();
   await handlers.databaseHandler?.initialize();
   if (mainWindow) {
-    handlers?.ipcHandler?.initialize(mainWindow)      
-    handlers?.exchangeRateHandler?.registerIPCListeners();  // should be call after end ipcHandler intialize()
+    handlers?.ipcHandler?.initialize(mainWindow)
+    handlers?.binanceHandler?.startHandler([COIN_PAIR.BTCUSDT, COIN_PAIR.ETHUSDT]);
+    handlers?.upbitHandler?.startHandler([COIN_PAIR.BTCKRW, COIN_PAIR.ETHKRW]);
+    handlers?.storeHandler?.registerIPCListeners();    
+    handlers?.marketInfoHandler?.registerIPCListeners();
+    handlers?.jobWorkerHandler?.registerIPCListeners();
+    handlers?.primiumHandler?.startHandler({
+      exchange1: EXCHANGE.UPBIT,
+      exchange2: EXCHANGE.BINANCE,
+      coinPair1: COIN_PAIR.BTCKRW,
+      coinPair2: COIN_PAIR.BTCUSDT,
+      coinSymbol: COIN_SYMBOL.BTC,
+    });
   }
 }
 
@@ -27,6 +40,7 @@ const createWindow = () => {
     icon: path.join(assetsPath, 'assets', 'icon.png'),
     width: 1100,
     height: 700,
+    frame: true, // url
     backgroundColor: '#191622',
     webPreferences: {
       nodeIntegration: false,
@@ -46,7 +60,7 @@ app.on('ready', createWindow)
   .then(() => {
     initializeApp();
   })
-  .catch(e => console.error(e))
+  .catch(e => handlers?.logHandler?.log?.error(e))
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

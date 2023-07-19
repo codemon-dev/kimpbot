@@ -1,228 +1,477 @@
-import { BrowserWindow } from "electron";
 import Binance from "node-binance-api"
 import Handlers from "./Handlers";
-import { IBestBidAsk, IBinanceAggTrade, IBinanceCoinInfo, IBinanceDeepth, IBinancePriceAmount } from "../../interface/IBinance";
-
+import { IBinanceAccount, IBinanceDeepth, IBinanceOrderResponse, IBinanceUserTrade } from "../../interface/IBinance";
+import { ACCOUNT_INFO, CoinInfos, PriceQty } from "../../interface/IMarketInfo";
+import { COIN_PAIR, COIN_SYMBOL, CURRENCY_TYPE, EXCHANGE, EXCHANGE_TYPE, ORDER_BID_ASK } from "../../constants/enum";
+import { IBestBidAsk } from "../../interface/IBinance";
+import { IBinanceAggTrade } from "../../interface/IBinance";
+import { ExchangeHandlerConfig, IExchangeCoinInfo } from "./exchangeHandler";
+import { getSymbolFromCoinPair } from "../../util/tradeUtil";
+import { IOrderInfo, ITradeInfo, ORDER_TYPE } from "../../interface/ITradeInfo";
+import _ from "lodash";
+import { FETCH_BALANCE_INTERVAL } from "../../constants/constants";
 
 export default class BinanceHander {
     private handlers: Handlers | undefined;
     private binance: Binance | undefined;
-    private apiKey: string | undefined;
-    private secretKey: string | undefined;
+    public coinInfos: CoinInfos = {};
+    private listener: any = null;
+    private exchnageCoinInfos: Map<COIN_PAIR, IExchangeCoinInfo>;
+    private apiKey: any = null;
+    private secretKey: any = null;
+    private coinPairs: COIN_PAIR[] = [];
+    private balanceInterval: any = null;
+    private accountInfo: ACCOUNT_INFO;
 
-    public binanceCoinInfo: IBinanceCoinInfo | undefined;
-
-    constructor(handlers: Handlers) {
+    constructor (handlers: Handlers) {
+        handlers.logHandler?.log?.info(`create BinanceHander`)
         this.handlers = handlers
-        console.log(`create BinanceHander`)
-        this.binanceCoinInfo = {
-            symbol: "BTCUSDT",
-            deepth: { symbol: "", timestamp: -1, receivedAt: -1, bid: [], ask: [] },
-            bestBidAsk: { symbol: "", receivedAt:-1, bestAsk: "", bestBid: "", bestAskQty: "", bestBidQty: ""},
-            aggregateTrade: { symbol: "", timestamp: -1, receivedAt: -1, isMaker: false, price: "", amount: "" }
+        this.exchnageCoinInfos = new Map<COIN_PAIR, IExchangeCoinInfo>();
+        this.binance = new Binance().options({
+            verbose: false,
+            test: false,
+            useServerTime: true,
+            hedgeMode: true,
+        });
+        this.accountInfo = {
+            coinPair: COIN_PAIR.NONE,
+            qty: 0,
+            initialMargin: 0,
+            avaliableBalance: 0,
+            currencyType: CURRENCY_TYPE.NONE,
+            pnl: 0,
+            price: 0,
+            leverage: 0,
+            isolated: false,
         }
-        this.start();
     }
 
-    public setAPIKey(apiKey: string, secretKey: string) {        
+    public addListener = (listener: any) => { this.listener = listener; }
+    public removeListener = () => { this.listener = null;}
+
+    public dispose = () => {
+        this.handlers?.logHandler?.log?.info("dispose BinanceHandler")
+        if (this.balanceInterval) {
+            clearInterval(this.balanceInterval);
+            this.balanceInterval = null;
+        }
+        this.removeListener();
+    }
+
+    public setAPIKey = (apiKey: string, secretKey: string) => {
+        this.handlers?.logHandler?.log?.info(`[BINANCE] setAPIKey. apiKey: ${apiKey}, secretKey: ${secretKey}`);
         this.apiKey = apiKey;
         this.secretKey = secretKey;
+        this.binance?.options({...this.binance.getOptions(), ...{
+            APIKEY: apiKey,
+            APISECRET: secretKey,
+        }});
     }
 
-    public start = () => {
-        this.binance = new Binance();
-        this.startHandler();
-        // binance = new Binance().options({
-        //     APIKEY: apiKey,
-        //     APISECRET: secretKey
-        // });
+    public initialize = async (config: ExchangeHandlerConfig) => {
+        this.coinPairs = [...config.coinPairs];
+
+        this.coinPairs.forEach((coinPair: COIN_PAIR) => {
+            this.coinInfos[coinPair] = {
+                coinPair, symbol: getSymbolFromCoinPair(coinPair), exchange: EXCHANGE.BINANCE,  exchangeType: EXCHANGE_TYPE.OVERSEA, 
+                price: -1, sellPrice: -1, sellQty: -1, buyPrice: -1, buyQty: -1, accountInfo: this.accountInfo, orderBook: {bid: [], ask: [], timestamp: 0}
+            }
+        })
+
+        this.setAPIKey(config.apiKey, config.secretKey);
         
+        if (this.apiKey && this.secretKey) {
+            const ret1 = await this.binance?.futuresMarginType(this.coinPairs[0], 'CROSSED');
+            const ret2 = await this.binance?.futuresChangePositionSideDual(true);
+            const ret3 = await this.binance?.futuresLeverage(this.coinPairs[0], config.leverage);
+
+            // this.handlers?.logHandler?.log?.debug("ret1: ", ret1)
+            // this.handlers?.logHandler?.log?.debug("ret2: ", ret2)
+            // this.handlers?.logHandler?.log?.debug("ret3: ", ret3)
+            await this.fetchBalance();
+            this.handlers?.logHandler?.log?.info(`[BINANCE][initialize]. accountInfo: `, this.accountInfo)
+        }
+        
+        this.handlers?.logHandler?.log?.info("[BINANCE] config: ", config)
+        if (!this.accountInfo || this.accountInfo.isolated === true || this.accountInfo.leverage !== config.leverage) {
+            return false;
+        }
+        return true;
     }
 
-    public startHandler = () => {
-        this.binance?.futuresSubscribe('btcusdt@depth10', (data: any) => {
-            if (!this.binanceCoinInfo) {
-                return;
-            }
-            this.binanceCoinInfo.deepth = {
-                symbol: data.s,
-                timestamp: data.T,
-                receivedAt: Date.now(),
-                ask: [],
-                bid: [],
-            }
+    public checkFakeTrade = async (order: ORDER_BID_ASK, volume: number, price: number) => {
+        let ret: any;
+        if (order === ORDER_BID_ASK.ASK) {
+            ret = await this.orderShort(this.coinPairs[0], volume, price);
+        } else {
+            ret = await this.orderBuy(this.coinPairs[0], volume, price);
             
-            if (data?.a.length > 0) {
-                data.a?.forEach((item: any) => {
-                    this.binanceCoinInfo?.deepth?.ask?.push({price: item[0], amount: item[1]});
-                });
-            }       
-            if (data?.b.length > 0) {
-                data.b?.forEach((item: any) => {
-                    this.binanceCoinInfo?.deepth?.bid?.push({price: item[0], amount: item[1]});
-                });
-            }    
-        });
-        this.binance?.futuresBookTickerStream('BTCUSDT', (data: any) => {
-            if (!this.binanceCoinInfo) {
-                return;
-            }
-            this.binanceCoinInfo.bestBidAsk = {
-                symbol: data.symbol,
-                receivedAt: Date.now(),
-                bestBid: data.bestBid,
-                bestAsk: data.bestAsk,
-                bestBidQty: data.bestBidQty,
-                bestAskQty: data.bestAskQty,
-            }
-        });
-        
-        this.binance?.futuresAggTradeStream('BTCUSDT', (data: any)=> {
-            if (!this.binanceCoinInfo) {
-                return;
-            }
-            this.binanceCoinInfo.aggregateTrade = {
-                symbol: data.symbol,
-                timestamp: data.timestamp,
-                receivedAt: Date.now(),
-                isMaker: data.maker,
-                price: data.price,
-                amount: data.amount,
-            }
-        });
-        
-        // setInterval(()=> {
-        //     console.log(this.binanceCoinInfo)
-        // }, 1000)
+        }
+        if (!ret || ret.status !== "NEW") {
+            return false;
+        }
+        const response: IBinanceOrderResponse = ret;
+        ret = await this.binance?.futuresCancel(this.coinPairs[0], {orderId: response.orderId});
+        return true;
     }
 
+    public orderMarketBuy = async (volume: number, price: number, jobWorkerId?: string) => {
+        return new Promise(async (resolve) => {
+            try {
+                let orderRet: any;
+                orderRet = await this.binance?.futuresMarketBuy(this.coinPairs[0], volume, {positionSide: "SHORT", newOrderRespType: 'RESULT'})
+                this.handlers?.logHandler?.log?.info(`[BINANCE][ORDER][MARKET_BUY] volume: ${volume}, orderRet: `, orderRet);
+                if (!orderRet || !orderRet.orderId || !orderRet.symbol) {
+                    resolve(null);
+                }
+                const orderRes: IBinanceOrderResponse = orderRet;
+                if (orderRes.status === "FILLED") {
+                    let trades: any = await this.binance?.futuresUserTrades(this.coinPairs[0], {orderId: orderRet.orderId});
+                    let fee = parseFloat((parseFloat(orderRes.cumQuote) * (this.exchnageCoinInfos.get(this.coinPairs[0])?.takerFee ?? 0) * 0.01).toFixed(8));
+                    if (trades?.length > 0 && trades[0].orderId === orderRes.orderId && trades[0].commissionAsset === "USDT") {
+                        fee = parseFloat(trades[0].commission);
+                    }
+
+                    let orderInfo: IOrderInfo = {
+                        price: parseFloat(orderRes.avgPrice),
+                        qty: parseFloat(orderRes.executedQty),
+                        timestamp: orderRes.updateTime,
+                    }
+                    const accountInfo = await this.fetchBalance();
+                    let tradeInfo: ITradeInfo = {
+                        jobWrokerId: jobWorkerId ?? "",
+                        exchange: EXCHANGE.BINANCE,
+                        orderId: orderRet.orderId,
+                        type: ORDER_TYPE.SELL,
+                        avgPrice: orderInfo.price,
+                        totalVolume: parseFloat(orderRes.cumQuote),
+                        totalQty: orderInfo.qty,
+                        totalFee: fee,
+                        orderInfos: [orderInfo],
+                        remainedBalance: accountInfo?.avaliableBalance ?? 0,
+                        createdAt: orderInfo.timestamp,
+                        updatedAt: orderInfo.timestamp,
+                    }
+                    resolve(tradeInfo);
+                }
+                resolve(null);
+            } catch (err) {
+                this.handlers?.logHandler?.log?.error("[EXCEPTION][BINANCE][ORDER][MARKET_SELL] err: ", err)
+                resolve(null);
+            }
+        });
+    }
     
+    public orderMarketSell = async (volume: number, jobWorkerId?: string) => {        
+        return new Promise(async (resolve) => {
+            try {
+                let orderRet: any;            
+                orderRet = await this.binance?.futuresMarketSell(this.coinPairs[0], volume, {newOrderRespType: 'RESULT'});            
+                this.handlers?.logHandler?.log?.info(`[BINANCE][ORDER][MARKET_SELL] volume: ${volume}, orderRet: `, orderRet);
+                if (!orderRet || !orderRet.orderId || !orderRet.symbol) {
+                    resolve(null);
+                }
+                const orderRes: IBinanceOrderResponse = orderRet;
+                if (orderRes.status === "FILLED") {
+                    let trades: any = await this.binance?.futuresUserTrades(this.coinPairs[0], {orderId: orderRet.orderId});
+                    let fee = parseFloat((parseFloat(orderRes.cumQuote) * (this.exchnageCoinInfos.get(this.coinPairs[0])?.takerFee ?? 0) * 0.01).toFixed(8));
+                    if (trades?.length > 0 && trades[0].orderId === orderRes.orderId && trades[0].commissionAsset === "USDT") {
+                        fee = parseFloat(trades[0].commission);
+                    }
     
-    private testfunc = () => {
-        // this.binance?.futuresSubscribe('btcusdt@kline_1m', console.log );
-        // @futuresSubscribe('btcusdt@kline_1m', console.log );
-        // {
-        //     e: 'kline',
-        //     E: 1685031628181,
-        //     s: 'BTCUSDT',
-        //     k: [Object: null prototype] {
-        //       t: 1685031600000,
-        //       T: 1685031659999,
-        //       s: 'BTCUSDT',
-        //       i: '1m',
-        //       f: 3750438422,
-        //       L: 3750439702,
-        //       o: '26270.20',
-        //       c: '26276.80',
-        //       h: '26279.10',
-        //       l: '26270.20',
-        //       v: '152.658',
-        //       n: 1281,
-        //       x: false,
-        //       q: '4011413.06210',
-        //       V: '96.228',
-        //       Q: '2528547.05620',
-        //       B: '0'
-        // }
-          
-        
-        // this.binance?.futuresSubscribe('btcusdt@depth10', console.log );
-        // @futuresSubscribe('btcusdt@depth10', console.log );
-        // {
-        //     e: 'depthUpdate',
-        //     E: 1685031396492,
-        //     T: 1685031396470,
-        //     s: 'BTCUSDT',
-        //     U: 2880014297310,
-        //     u: 2880014304947,
-        //     pu: 2880014297049,
-        //     b: [
-        //       [ '26237.60', '9.248' ],
-        //       [ '26237.50', '0.002' ]
-        //     ],
-        //     a: [
-        //       [ '26237.70', '9.168' ],
-        //       [ '26237.80', '0.002' ]
-        //     ]
-        // }
-
-        // this.binance?.futuresMiniTickerStream('BTCUSDT', console.log)
-        // @futuresMiniTickerStream('BTCUSDT', console.log)
-        // {
-        //     eventType: '24hrMiniTicker',
-        //     eventTime: 1685031528481,
-        //     symbol: 'BTCUSDT',
-        //     close: '26252.90',
-        //     open: '26180.10',
-        //     high: '26489.50',
-        //     low: '25850.00',
-        //     volume: '403343.944',
-        //     quoteVolume: '10587828723.80'
-        // }
-        // this.binance?.futuresTickerStream('BTCUSDT', console.log)
-        
-        
-        // this.binance?.futuresBookTickerStream('BTCUSDT', console.log)
-        // @futuresBookTickerStream('BTCUSDT', console.log)
-        // {
-        //     updateId: 2880007752225,
-        //     symbol: 'BTCUSDT',
-        //     bestBid: '26241.30',
-        //     bestBidQty: '19.069',
-        //     bestAsk: '26241.40',
-        //     bestAskQty: '8.763'
-        // }
-
-
-
-        // this.binance?.futuresBookTickerStream('BTCUSDT', (data: any)=> {
-        //     console.log(`futuresBookTickerStream: `, data);
-        // } );
-
-
-        // this.binance?.futuresSubscribe( 'btcusdt@depth10', console.log );
-
-        
-        // this.binance?.futuresAggTradeStream(['BTCUSDT', 'ETHUSDT'], (data: any)=> {
-        //     console.log(data)
-        // } );
-        // @futuresAggTradeStream(['BTCUSDT', 'ETHUSDT'], (data: any)=> {
-        // {
-        //     eventType: 'aggTrade',
-        //     eventTime: 1685035616756,
-        //     symbol: 'BTCUSDT',
-        //     aggTradeId: 1746253287,
-        //     price: '26314.20',
-        //     amount: '0.274',
-        //     total: 7210.090800000001,
-        //     firstTradeId: 3750555279,
-        //     lastTradeId: 3750555280,
-        //     timestamp: 1685035616650,
-        //     maker: true
-        // }
-
-        // let endpoints = this.binance?.websockets.subscriptions();    
-        // for (let endpoint in endpoints) {
-        //     console.log(`websockets endpoint: ${endpoint}`);
-        //     // this.binance?.websockets.terminate(endpoint);
-        // }
-        
-        // this.binance?.futuresPrices().then(
-        //     (data: any) => {
-        //         console.log(data);
-        //     }
-        // ) 
-
-        // this.binance?.futuresAccount().then(
-        //     (data: any) => {
-        //         console.log(data);
-        //     }
-        // ) 
-
-        
-        // this.binance?.futuresLeverage( 'BTCUSDT', 2 )
-        // this.binance?.futuresMarginType( 'BTCUSDT', "CROSSED" )
+                    const accountInfo = await this.fetchBalance();
+                    let orderInfo: IOrderInfo = {
+                        price: parseFloat(orderRes.avgPrice),
+                        qty: parseFloat(orderRes.executedQty),
+                        timestamp: orderRes.updateTime,
+                    }
+                    let tradeInfo: ITradeInfo = {
+                        jobWrokerId: jobWorkerId ?? "",
+                        exchange: EXCHANGE.BINANCE,
+                        orderId: orderRet.orderId,
+                        type: ORDER_TYPE.SELL,
+                        avgPrice: orderInfo.price,
+                        totalVolume: parseFloat(orderRes.cumQuote),
+                        totalQty: orderInfo.qty,
+                        totalFee: fee,
+                        orderInfos: [orderInfo],
+                        remainedBalance: accountInfo?.avaliableBalance ?? 0,
+                        createdAt: orderInfo.timestamp,
+                        updatedAt: orderInfo.timestamp,
+                    }
+                    resolve(tradeInfo);
+                }
+                resolve(null);
+            } catch (err) {
+                this.handlers?.logHandler?.log?.error("[EXCEPTION][BINANCE][ORDER][MARKET_SELL] err: ", err)
+                resolve(null);
+            }
+        });
     }
 
-    
+    public orderBuy = async (coinPair: COIN_PAIR, volume: number, price: number) => {
+        let ret: any = await this.binance?.futuresBuy(coinPair, volume, price);
+        this.handlers?.logHandler?.log?.info(`[BINANCE][ORDER][LONG] coinPair: ${coinPair}, volume: ${volume}, price: ${price}. ret: `, ret);
+        if (!ret || ret.code) {
+            return null;
+        }
+        return ret;
+    }
+
+    public orderShort = async (coinPair: COIN_PAIR, volume: number, price: number) => {
+        let ret: any = await this.binance?.futuresSell(coinPair, volume, price);
+        this.handlers?.logHandler?.log?.info(`[BINANCE][ORDER][SHORT] coinPair: ${coinPair}, volume: ${volume}, price: ${price}. ret: `, ret);
+        if (!ret || ret.code) {
+            return null;
+        }
+        return ret;
+    }
+
+    public fetchBalance = async (symbols: COIN_SYMBOL[] = [COIN_SYMBOL.USDT]): Promise<any> => {        
+        try {
+            if (!this.apiKey || !this.secretKey) {
+                return;
+            }
+            let account: IBinanceAccount = await this.binance?.futuresAccount();
+            account.assets = account.assets?.filter((asset: any) => (symbols?.includes(asset.asset)))   // "USDT", "BTC"
+            // account.positions = account.positions?.filter((position: any) => {
+            //     return (this.coinPairs?.includes(position.symbol) && position.positionSide == "SHORT")
+            // });  //"BTCUSDT"
+            account.positions = account.positions?.filter((position: any) => {
+                return (this.coinPairs?.includes(position.symbol) && position.positionSide === "SHORT")
+            });  //"BTCUSDT"
+            // this.handlers?.logHandler?.log?.debug("[BINANCE] totalWalletBalance: ", account.totalWalletBalance);
+            // this.handlers?.logHandler?.log?.debug("[BINANCE] availableBalance: ", account.availableBalance);
+            // this.handlers?.logHandler?.log?.debug("[BINANCE] totalCrossUnPnl: ", account.totalCrossUnPnl);
+            // this.handlers?.logHandler?.log?.debug("[BINANCE] positions: ", account.positions);          
+
+            this.accountInfo = {
+                coinPair: account.positions?.length > 0? account.positions[0].symbol as COIN_PAIR: COIN_PAIR.NONE,
+                qty: account.positions?.length > 0? Math.abs(parseFloat(account.positions[0].positionAmt)): 0,
+                initialMargin: account.positions?.length >0? parseFloat(account.positions[0].initialMargin): 0,
+                avaliableBalance: parseFloat(account.availableBalance),
+                currencyType: CURRENCY_TYPE.USDT,
+                pnl: account.positions?.length > 0 ? parseFloat(account.positions[0].unrealizedProfit): 0,
+                price: account.positions?.length > 0 ? parseFloat(account.positions[0].entryPrice): 0,
+                leverage: account.positions?.length > 0? parseFloat(account.positions[0].leverage): 0,
+                isolated: account.positions?.length > 0? account.positions[0].isolated: false,
+            }
+            if (this.coinPairs?.length > 0) {
+                this.coinInfos[this.coinPairs[0]].accountInfo = {...this.accountInfo}
+            }
+        } catch (err: any) {
+            this.handlers?.logHandler?.log?.error("[BINANCE] fetchBalance error: ", err);
+            this.accountInfo = {
+                coinPair: COIN_PAIR.NONE,
+                qty: 0,
+                initialMargin: 0,
+                avaliableBalance: 0,
+                currencyType: CURRENCY_TYPE.USDT,
+                pnl: 0,
+                price: 0,
+                leverage: 0,
+                isolated: false,
+            }
+            if (this.coinPairs?.length > 0) {
+                this.coinInfos[this.coinPairs[0]].accountInfo = {...this.accountInfo}
+            }
+        } finally {
+            return this.accountInfo;
+        }
+    }
+
+    public getExchangeCoinInfos = async (coinPairs: COIN_PAIR[]) => {
+        const exchagneInfo: any = await this.binance?.futuresExchangeInfo();
+        if (!exchagneInfo || exchagneInfo.symbols?.length === 0) {
+            this.exchnageCoinInfos.clear();
+            return this.exchnageCoinInfos;
+        }
+        try {
+            for (const symbol of exchagneInfo.symbols) {
+                if (coinPairs.includes(symbol.pair)) {                
+                    let exchangeCoinInfo: IExchangeCoinInfo = {
+                        coinPair: symbol.pair,
+                        status: symbol.status === "TRADING"? true: false,
+                        liquidationFee: symbol.liquidationFee,
+                        takerFee: 0.04,
+                        makerFee: 0.02,
+                        minPrice: 0,
+                        maxPrice: 0,
+                        tickSize: 0,
+                        stepSize: 0,
+                        minQty: 0,
+                        maxQty: 0,
+                        minNotional: 0,                    
+                    }
+                    for (let filter of symbol.filters ) {
+                        if ( filter.filterType == "MIN_NOTIONAL" ) {
+                            exchangeCoinInfo.minNotional = filter.notional;
+                        } else if ( filter.filterType == "PRICE_FILTER" ) {
+                            exchangeCoinInfo.minPrice = filter.minPrice;
+                            exchangeCoinInfo.maxPrice = filter.maxPrice;
+                            exchangeCoinInfo.tickSize = filter.tickSize;
+                        } else if ( filter.filterType == "LOT_SIZE" ) {
+                            exchangeCoinInfo.stepSize = filter.stepSize;
+                            exchangeCoinInfo.minQty = filter.minQty;
+                            exchangeCoinInfo.maxQty = filter.maxQty;
+                        }
+                    }
+                    this.handlers?.logHandler?.log?.info(exchangeCoinInfo);
+                    this.exchnageCoinInfos.set(exchangeCoinInfo.coinPair, exchangeCoinInfo);
+                    break;
+                }
+            }
+        } catch (err) {
+            this.handlers?.logHandler?.log?.error("[BINANCE] getExchangeCoinInfos error: ", err);
+            this.exchnageCoinInfos.clear();
+        }
+        return this.exchnageCoinInfos
+    }
+
+    public startHandler = async (coinPairs: COIN_PAIR[]) => {
+        this.handlers?.logHandler?.log?.info("[BINANCE] startHandler. coinPairs: ", coinPairs);        
+        this.coinPairs = [...coinPairs];
+        if (this.coinPairs?.length === 0) {
+            return;
+        }
+        let newCoinPairs: string[] = []
+        this.coinPairs.forEach((coinPair: COIN_PAIR) => {
+            newCoinPairs.push(coinPair.toString());
+        })
+        newCoinPairs.forEach((coinPair: any) => {
+            this.coinInfos[coinPair] = {
+                coinPair, symbol: getSymbolFromCoinPair(coinPair), exchange: EXCHANGE.BINANCE,  exchangeType: EXCHANGE_TYPE.OVERSEA, 
+                price: -1, sellPrice: -1, sellQty: -1, buyPrice: -1, buyQty: -1, accountInfo: this.accountInfo, orderBook: {bid: [], ask: [], timestamp: 0}
+            }
+            if (this.listener) {
+                this.listener(null);
+            }
+        })
+
+        if (this.apiKey && this.secretKey) {
+            await this.fetchBalance();
+            this.handlers?.logHandler?.log?.info(`[BINANCE] first fetched balance. accountInfo: `, this.accountInfo)
+        }
+        if (this.balanceInterval) {
+            clearInterval(this.balanceInterval);
+            this.balanceInterval = null;
+        }
+        if (this.apiKey && this.secretKey) {
+            this.balanceInterval = setInterval(() => {
+                this.fetchBalance();
+            }, FETCH_BALANCE_INTERVAL);
+        }
+
+        newCoinPairs.forEach((coinPair: any) => {
+            // let lowerSymbol: string = symbol.toLowerCase();
+            // let lowerSymbol: string = "btcusdt"
+
+            this.binance?.futuresSubscribe(`${coinPair.toString().toLowerCase()}@depth10`, (data: any) => {
+                try {
+                    this.coinInfos[coinPair].orderBook.timestamp = data.T;
+                    let ask: PriceQty[] = [];
+                    let bid: PriceQty[] = [];
+                    if (data?.a.length > 0) {
+                        data.a?.forEach((item: any) => {
+                            ask.push({price: parseFloat(item[0]), qty: parseFloat(item[1])});
+                        });
+                    }       
+                    if (data?.b.length > 0) {
+                        data.b?.forEach((item: any) => {
+                            bid.push({price: parseFloat(item[0]), qty: parseFloat(item[1])});
+                        });
+                    }
+                    this.coinInfos[coinPair].orderBook.ask = ask;
+                    this.coinInfos[coinPair].orderBook.bid = bid;
+                    this.coinInfos[coinPair].sellPrice = this.coinInfos[coinPair].orderBook.ask[0].price;
+                    this.coinInfos[coinPair].sellQty = this.coinInfos[coinPair].orderBook.ask[0].qty;
+                    this.coinInfos[coinPair].buyPrice = this.coinInfos[coinPair].orderBook.bid[0].price;
+                    this.coinInfos[coinPair].buyQty = this.coinInfos[coinPair].orderBook.bid[0].qty;                    
+                    
+                    if (this.listener) {
+                        this.listener(_.cloneDeep(this.coinInfos[coinPair]));
+                    }
+                } catch (err) {
+                    this.handlers?.logHandler?.log?.error("[BINANCE] futuresSubscribe error. err: ", err);
+                    if (this.listener) {
+                        this.listener(null);
+                    }
+                }
+            });    
+        })
+        
+        this.binance?.futuresBookTickerStream(newCoinPairs.toString(), (data: any) => {
+            try {
+                if (!this.coinInfos) {
+                    return;
+                }
+                const bestBidAsk: IBestBidAsk = {
+                    coinPair: data.symbol,
+                    receivedAt: Date.now(),
+                    bestBid: data.bestBid,
+                    bestAsk: data.bestAsk,
+                    bestBidQty: data.bestBidQty,
+                    bestAskQty: data.bestAskQty,
+                }
+            }
+            catch (err) {
+                this.handlers?.logHandler?.log?.error("[BINANCE] futuresBookTickerStream error. err: ", err);
+            }
+        });
+
+        this.binance?.futuresAggTradeStream(newCoinPairs, (data: any)=> {
+            try {
+                if (!this.coinInfos) {
+                    return;
+                }
+                const aggregateTrade: IBinanceAggTrade = {
+                    coinPair: data.symbol,
+                    timestamp: data.timestamp,
+                    receivedAt: Date.now(),
+                    isMaker: data.maker,
+                    price: data.price,
+                    amount: data.amount,
+                }
+                this.coinInfos[data.symbol].price = parseFloat(aggregateTrade.price);
+                if (this.listener) {
+                    this.listener(_.cloneDeep(this.coinInfos[data.symbol]));
+                }
+            }
+            catch (err) {
+                this.handlers?.logHandler?.log?.error("[BINANCE] futuresAggTradeStream error. err: ", err);
+                if (this.listener) {
+                    this.listener(null);
+                }
+            }
+        });
+
+        if (this.apiKey) {
+            try {
+                // userFutureData(margin_call_callback: _callback, account_update_callback: _callback, order_update_callback: _callback, subscribed_callback: _callback): any;
+                this.binance?.websockets.userFutureData(
+                    (data: any)=>{
+                        this.handlers?.logHandler?.log?.info("[BINANCE] margin_call_callback")
+                        // this.handlers?.logHandler?.log?.debug("margin_call_callback. data: ", JSON.stringify(data).toString());
+                        this.fetchBalance();
+                    },
+                    (data: any)=>{
+                        this.handlers?.logHandler?.log?.info("[BINANCE] account_update_callback")
+                        // this.handlers?.logHandler?.log?.debug("account_update_callback. data: ", JSON.stringify(data).toString());
+                        this.fetchBalance();
+                    }, 
+                    (data: any)=>{
+                        this.handlers?.logHandler?.log?.info("[BINANCE] order_update_callback")
+                        // this.handlers?.logHandler?.log?.debug("order_update_callback. data: ", JSON.stringify(data).toString());
+                        this.fetchBalance();
+                    }, 
+                    (data: any)=>{
+                        this.handlers?.logHandler?.log?.info("[BINANCE] subscribed_callback")
+                        // this.handlers?.logHandler?.log?.debug("subscribed_callback. data: ", JSON.stringify(data).toString());
+                    }, 
+                );
+            } catch (err: any) {
+                this.handlers?.logHandler?.log?.error("[BINANCE] userFutureData. err: ", err);
+            }
+        }
+    }
 }

@@ -36,6 +36,7 @@ export const Navigation = () => {
               <Menu.Item header>Project Name</Menu.Item>
               <Menu.Item as={Link} to='/dashboard'>Dashboard</Menu.Item>
               <Menu.Item as={Link} to='/profile'>Profile</Menu.Item>
+              <Menu.Item as={Link} to='/primiumChart'>PrimiumChart</Menu.Item>
 
               <Menu.Menu position='right'>
                 <Dropdown text='Link' pointing className='link item'>
