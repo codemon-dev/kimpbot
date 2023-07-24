@@ -126,6 +126,7 @@ export default class CurrencyHandler {
               timestamp: response[0].timestamp,
             };
             resolve(currencyInfo);
+            return;
           }
         }
         reject();
@@ -160,6 +161,7 @@ export default class CurrencyHandler {
               timestamp: data[data.length - 1].timestamp
             };
             resolve(currencyInfo);
+            return;
           }
         }
         reject();
@@ -213,6 +215,7 @@ export default class CurrencyHandler {
             };
             // this.handlers?.logHandler?.log?.debug("yahoo", currencyInfo);
             resolve(currencyInfo);
+            return;
           }
           reject();
         }
@@ -247,6 +250,7 @@ export default class CurrencyHandler {
               timestamp: moment.tz(data.tradeTime, data.timeZone).valueOf(),
             };
             resolve(currencyInfo);
+            return;
           }
         }
         reject();

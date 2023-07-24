@@ -4,7 +4,8 @@ import isDev from "electron-is-dev";
 import { DATA_LOG_DIR_PATH } from "../constants/constants";
 
 export const getDBFilePath = (filename: string) => {
-    return isDev ? `${process.cwd()}/db/data/${filename}`: `${app.getPath("userData")}/db/data/${filename}`;
+    const path = isDev ? `${process.cwd()}/db/data/${filename}`: `${app.getPath("userData")}/db/data/${filename}`;    
+    return path;
 }
 
 export const getPrimiumnFilePath = () => {

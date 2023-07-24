@@ -84,6 +84,10 @@ export interface ITradeJobInfo {
     _id?: string,
     userUID: string,
     jobWrokerId: string,
+    coinPair_1: COIN_PAIR,
+    coinPair_2: COIN_PAIR,
+    symbol_1: COIN_SYMBOL,
+    symbol_2: COIN_SYMBOL,
 
     enterTradeStatus: ITradeStatus,
     exitTradeStatus: ITradeStatus,
@@ -114,6 +118,22 @@ export interface ITradeJobInfo {
 
     enterCompleteType: COMPLETE_TYPE,
     exitCompleteType: COMPLETE_TYPE,
+
+    leverage_1: number,
+    leverage_2: number,
+
+    profit_1: number,
+    profit_2: number,
+    totalProfit: number,
+
+    fee_1: number,
+    fee_2: number,
+    totalFee: number,
+
+    totalProfitIncludeFee: number,    
+    profitRate: number,
+    profitRateIncludeFee: number,    
+    
 
     createdAt: number,
     updatedAt: number,

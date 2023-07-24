@@ -44,6 +44,14 @@ export default class marketInfoHandler {
             // this.marketInfo.exchangeRateInfo = 
             this.marketInfo.coinInfos[COIN_PAIR.ETHUSDT] = _.cloneDeep(this.handlers?.binanceHandler?.coinInfos[COIN_PAIR.ETHUSDT])
         }
+        if (this.handlers?.binanceHandler?.coinInfos[COIN_PAIR.XRPUSDT]) {
+            // this.marketInfo.exchangeRateInfo = 
+            this.marketInfo.coinInfos[COIN_PAIR.XRPUSDT] = _.cloneDeep(this.handlers?.binanceHandler?.coinInfos[COIN_PAIR.XRPUSDT])
+        }
+        if (this.handlers?.binanceHandler?.coinInfos[COIN_PAIR.DOGEUSDT]) {
+            // this.marketInfo.exchangeRateInfo = 
+            this.marketInfo.coinInfos[COIN_PAIR.DOGEUSDT] = _.cloneDeep(this.handlers?.binanceHandler?.coinInfos[COIN_PAIR.DOGEUSDT])
+        }
         if (this.handlers?.upbitHandler?.coinInfos[COIN_PAIR.BTCKRW]) {
             // this.marketInfo.exchangeRateInfo = 
             this.marketInfo.coinInfos[COIN_PAIR.BTCKRW] = _.cloneDeep(this.handlers?.upbitHandler?.coinInfos[COIN_PAIR.BTCKRW])
@@ -51,6 +59,14 @@ export default class marketInfoHandler {
         if (this.handlers?.upbitHandler?.coinInfos[COIN_PAIR.ETHKRW]) {
             // this.marketInfo.exchangeRateInfo = 
             this.marketInfo.coinInfos[COIN_PAIR.ETHKRW] = _.cloneDeep(this.handlers?.upbitHandler?.coinInfos[COIN_PAIR.ETHKRW])
+        }
+        if (this.handlers?.upbitHandler?.coinInfos[COIN_PAIR.XRPKRW]) {
+            // this.marketInfo.exchangeRateInfo = 
+            this.marketInfo.coinInfos[COIN_PAIR.XRPKRW] = _.cloneDeep(this.handlers?.upbitHandler?.coinInfos[COIN_PAIR.XRPKRW])
+        }
+        if (this.handlers?.upbitHandler?.coinInfos[COIN_PAIR.DOGEKRW]) {
+            // this.marketInfo.exchangeRateInfo = 
+            this.marketInfo.coinInfos[COIN_PAIR.DOGEKRW] = _.cloneDeep(this.handlers?.upbitHandler?.coinInfos[COIN_PAIR.DOGEKRW])
         }
         if (this.handlers?.currencyHandler?.currencyInfos) {
             this.marketInfo.currencyInfos = _.cloneDeep(this.handlers?.currencyHandler?.currencyInfos);

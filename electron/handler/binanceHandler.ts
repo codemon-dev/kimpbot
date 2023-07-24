@@ -100,7 +100,15 @@ export default class BinanceHander {
     }
 
     public checkFakeTrade = async (order: ORDER_BID_ASK, volume: number, price: number) => {
+        /*        
+        ETHUSDT 의 경우 아래처럼 bigINT 때문에 cancle order불가하여 임시 로 막음.
+        orderId: { s: 1, e: 18, c: [ 83897, 65609753236609 ] },
+        symbol: 'ETHUSDT',
+        */
+        return true;
+
         let ret: any;
+        // this.handlers?.logHandler?.log?.info(`[BINANCE][checkFakeTrade][1] volume: ${volume}, price: `, price);
         if (order === ORDER_BID_ASK.ASK) {
             ret = await this.orderShort(this.coinPairs[0], volume, price);
         } else {
@@ -111,7 +119,9 @@ export default class BinanceHander {
             return false;
         }
         const response: IBinanceOrderResponse = ret;
+        this.handlers?.logHandler?.log?.info(`[BINANCE][cancleOrder][0] orderId: ${response.orderId}, ret: `, ret);
         ret = await this.binance?.futuresCancel(this.coinPairs[0], {orderId: response.orderId});
+        this.handlers?.logHandler?.log?.info(`[BINANCE][cancleOrder][2] orderId: ${response.orderId}, ret: `, ret);
         return true;
     }
 
@@ -123,6 +133,7 @@ export default class BinanceHander {
                 this.handlers?.logHandler?.log?.info(`[BINANCE][ORDER][MARKET_BUY] volume: ${volume}, orderRet: `, orderRet);
                 if (!orderRet || !orderRet.orderId || !orderRet.symbol) {
                     resolve(null);
+                    return;
                 }
                 const orderRes: IBinanceOrderResponse = orderRet;
                 if (orderRes.status === "FILLED") {
@@ -153,6 +164,7 @@ export default class BinanceHander {
                         updatedAt: orderInfo.timestamp,
                     }
                     resolve(tradeInfo);
+                    return;
                 }
                 resolve(null);
             } catch (err) {
@@ -170,6 +182,7 @@ export default class BinanceHander {
                 this.handlers?.logHandler?.log?.info(`[BINANCE][ORDER][MARKET_SELL] volume: ${volume}, orderRet: `, orderRet);
                 if (!orderRet || !orderRet.orderId || !orderRet.symbol) {
                     resolve(null);
+                    return;
                 }
                 const orderRes: IBinanceOrderResponse = orderRet;
                 if (orderRes.status === "FILLED") {
@@ -200,6 +213,7 @@ export default class BinanceHander {
                         updatedAt: orderInfo.timestamp,
                     }
                     resolve(tradeInfo);
+                    return;
                 }
                 resolve(null);
             } catch (err) {
@@ -287,12 +301,15 @@ export default class BinanceHander {
             return this.exchnageCoinInfos;
         }
         try {
+            //this.handlers?.logHandler?.log?.info('exchagneInfo: ', exchagneInfo);
             for (const symbol of exchagneInfo.symbols) {
                 if (coinPairs.includes(symbol.pair)) {                
                     let exchangeCoinInfo: IExchangeCoinInfo = {
                         coinPair: symbol.pair,
                         status: symbol.status === "TRADING"? true: false,
                         liquidationFee: symbol.liquidationFee,
+                        pricePrecision: symbol.pricePrecision ?? -1,
+                        quantityPrecision: symbol.quantityPrecision ?? -1,
                         takerFee: 0.04,
                         makerFee: 0.02,
                         minPrice: 0,
@@ -301,7 +318,7 @@ export default class BinanceHander {
                         stepSize: 0,
                         minQty: 0,
                         maxQty: 0,
-                        minNotional: 0,                    
+                        minNotional: 0,                                            
                     }
                     for (let filter of symbol.filters ) {
                         if ( filter.filterType == "MIN_NOTIONAL" ) {
@@ -310,7 +327,8 @@ export default class BinanceHander {
                             exchangeCoinInfo.minPrice = filter.minPrice;
                             exchangeCoinInfo.maxPrice = filter.maxPrice;
                             exchangeCoinInfo.tickSize = filter.tickSize;
-                        } else if ( filter.filterType == "LOT_SIZE" ) {
+                        // } else if ( filter.filterType == "LOT_SIZE" ) {
+                        } else if ( filter.filterType == "MARKET_LOT_SIZE" ) {
                             exchangeCoinInfo.stepSize = filter.stepSize;
                             exchangeCoinInfo.minQty = filter.minQty;
                             exchangeCoinInfo.maxQty = filter.maxQty;
@@ -365,7 +383,6 @@ export default class BinanceHander {
         newCoinPairs.forEach((coinPair: any) => {
             // let lowerSymbol: string = symbol.toLowerCase();
             // let lowerSymbol: string = "btcusdt"
-
             this.binance?.futuresSubscribe(`${coinPair.toString().toLowerCase()}@depth10`, (data: any) => {
                 try {
                     this.coinInfos[coinPair].orderBook.timestamp = data.T;

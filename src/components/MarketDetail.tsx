@@ -1,6 +1,6 @@
 import _, { values } from "lodash";
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Header, Segment, Grid, Form, Dropdown, Table, Button, GridRow, Divider, Card, Message} from 'semantic-ui-react'
+import { Header, Segment, Grid, Form, Dropdown, Table, Button, GridRow, Divider, Card, Message, Input} from 'semantic-ui-react'
 import { COIN_PAIR, COIN_SYMBOL, CURRENCY_SITE_TYPE, EXCHANGE, EXCHANGE_TYPE } from '../../constants/enum';
 import ExchangeInfoComp from './ExchangeInfoComp';
 import { CoinInfo, IMarketInfo } from '../../interface/IMarketInfo';
@@ -44,6 +44,8 @@ const MarketDetail = () => {
     const symbolOptions: DropdownOption[] = [
         { key: 'btc', text: 'BTC', value: COIN_SYMBOL.BTC, image: { avatar: true, src: '/images/avatar/small/elliot.jpg' }, },
         { key: 'eth', text: 'ETH', value: COIN_SYMBOL.ETH, image: { avatar: true, src: '/images/avatar/small/stevie.jpg' }, },
+        { key: 'xrp', text: 'XRP', value: COIN_SYMBOL.XRP, image: { avatar: true, src: '/images/avatar/small/stevie.jpg' }, },
+        { key: 'doge', text: 'DOGE', value: COIN_SYMBOL.DOGE, image: { avatar: true, src: '/images/avatar/small/stevie.jpg' }, },
     ];
     const defaultDomesticCoinIfo = {coinPair: COIN_PAIR.BTCKRW, symbol: COIN_SYMBOL.BTC, exchange: EXCHANGE.UPBIT, exchangeType: EXCHANGE_TYPE.DOMESTIC, price: 0, sellPrice: 0, sellQty: 0, buyPrice: 0, buyQty: 0, orderBook: {ask: [], bid: [], timestamp: 0}};
     const defaultOverseaCoinIfo = {coinPair: COIN_PAIR.BTCUSDT, symbol: COIN_SYMBOL.BTC, exchange: EXCHANGE.BINANCE, exchangeType: EXCHANGE_TYPE.OVERSEA, price: 0, sellPrice: 0, sellQty: 0, buyPrice: 0, buyQty: 0, orderBook: {ask: [], bid: [], timestamp: 0}};
@@ -227,6 +229,24 @@ const MarketDetail = () => {
                 newCoinInfo.coinPair = COIN_PAIR.ETHUSDT;
                 newCoinInfo.symbol = COIN_SYMBOL.ETH;
                 setOverseaCoinInfo({...newCoinInfo});
+            } else if (value === COIN_SYMBOL.XRP) {
+                newCoinInfo = defaultDomesticCoinIfo;
+                newCoinInfo.coinPair = COIN_PAIR.XRPKRW;
+                newCoinInfo.symbol = COIN_SYMBOL.XRP;
+                setDomesticCoinInfo({...newCoinInfo});
+                newCoinInfo = defaultOverseaCoinIfo;
+                newCoinInfo.coinPair = COIN_PAIR.XRPUSDT;
+                newCoinInfo.symbol = COIN_SYMBOL.XRP;
+                setOverseaCoinInfo({...newCoinInfo});
+            } else if (value === COIN_SYMBOL.DOGE) {
+                newCoinInfo = defaultDomesticCoinIfo;
+                newCoinInfo.coinPair = COIN_PAIR.DOGEKRW;
+                newCoinInfo.symbol = COIN_SYMBOL.DOGE;
+                setDomesticCoinInfo({...newCoinInfo});
+                newCoinInfo = defaultOverseaCoinIfo;
+                newCoinInfo.coinPair = COIN_PAIR.DOGEUSDT;
+                newCoinInfo.symbol = COIN_SYMBOL.DOGE;
+                setOverseaCoinInfo({...newCoinInfo});
             }
         }
     }
@@ -236,6 +256,11 @@ const MarketDetail = () => {
         if (name === "domesticExchange") {            
         } else if (name === "overseaExchange") {
         }
+    }
+
+    const onChangeExitTargetPrimium = (evt: any) => {
+        console.log(`onChangeExitTargetPrimium. name: ${evt.target[0].name}, value: ${evt.target[0].value}`);
+        window.Main.updateJobWorkerTargetPrimium(evt.target[0].name, evt.target[0].value);
     }
 
     const onChangeAPIKey = (e: any, { name, value }: any) => {
@@ -361,7 +386,7 @@ const MarketDetail = () => {
                                         onChange={onChange}
                                     />
                                     <Form.Input
-                                        label="분할매수 수량(BTC)"
+                                        label={`분할매수 수량(${overseaCoinInfo.symbol})`}
                                         name={`splitTradeQty`}
                                         type={"number"}
                                         step={"0.001"}
@@ -420,7 +445,7 @@ const MarketDetail = () => {
                             {   
                                 jobWorkers?.map((jobWorkerInfo: IJobWorkerInfo, index: number) => {
                                     return (
-                                        <Card key={`jobWorker_${jobWorkerInfo._id}`}>
+                                        <Card key={`jobWorker_${jobWorkerInfo._id}`}  color={jobWorkerInfo.isStarted?"green": "orange"}>
                                             <Card.Content>
                                                 <Card.Header>id: {jobWorkerInfo._id}</Card.Header>
                                                 <Card.Meta>isStarted: {jobWorkerInfo.isStarted === true? "true": "false"}</Card.Meta>
@@ -446,6 +471,21 @@ const MarketDetail = () => {
                                                 </Card.Description>
                                             </Card.Content>
                                             <Card.Content extra>
+                                                <div>        
+                                                    <Form onSubmit={onChangeExitTargetPrimium}>
+                                                        <Header as='h2'>탈출김프(%)</Header>
+                                                        <Input              
+                                                        type={"number"}
+                                                        step={"0.01"} 
+                                                        fluid
+                                                        name={jobWorkerInfo._id} 
+                                                        disabled={jobWorkerInfo.isStarted} 
+                                                        // placeholder={`${jobWorkerInfo.exitTargetPrimium}`} 
+                                                        action={<Button type='submit'>변경</Button>}
+                                                        defaultValue={jobWorkerInfo.exitTargetPrimium}/>
+                                                    </Form>                                  
+                                                    
+                                                </div>
                                                 <div>
                                                     <Button name={jobWorkerInfo._id} onClick={onclickJobworkerDelete}>삭제</Button>
                                                     <Button name={jobWorkerInfo._id} onClick={onclickJobworkerStart}>시작</Button>
@@ -461,10 +501,6 @@ const MarketDetail = () => {
                         <div>
                             {   
                             tradeJobInfos?.map((tradeJobInfo: ITradeJobInfo, index: number) => {
-                                const profitDomastic: number = tradeJobInfo.exitTradeStatus.totalVolume_1 - tradeJobInfo.enterTradeStatus.totalVolume_1;
-                                const profitOversea: number = Math.round(((tradeJobInfo.enterTradeStatus.totalVolume_2 * tradeJobInfo.enteredCurrencyPrice) - (tradeJobInfo.exitTradeStatus.totalVolume_2 * tradeJobInfo.exitedCurrencyPrice)));
-                                const totalFee: number = tradeJobInfo.enterTradeStatus.totalFee_1 + tradeJobInfo.exitTradeStatus.totalFee_1 + ((tradeJobInfo.enterTradeStatus.totalFee_2 + tradeJobInfo.exitTradeStatus.totalFee_2) * tradeJobInfo.exitedCurrencyPrice)
-                                const profitRate: number = (profitDomastic + profitOversea - totalFee) / (tradeJobInfo.enterTradeStatus.totalVolume_1 + (tradeJobInfo.enterTradeStatus.totalVolume_2 * tradeJobInfo.enteredCurrencyPrice)) * 100
                                 return (
                                     <div key={`jobWorker_${index}`}>
                                         {
@@ -473,33 +509,34 @@ const MarketDetail = () => {
                                                     <Divider />
                                                     <Message>
                                                         <Message.Header>진입 ({getLocalTimeStr(tradeJobInfo.enterTradeStatus.timestamp)})</Message.Header>                                                                                                    
-                                                        <p> 진입(국내): {tradeJobInfo.enterTradeStatus?.totalQty_1}BTC | 평균가격: {tradeJobInfo.enterTradeStatus?.avgPrice_1.toLocaleString()}원</p>
+                                                        <p> 진입(국내): {tradeJobInfo.enterTradeStatus?.totalQty_1}{tradeJobInfo.symbol_1} | 평균가격: {tradeJobInfo.enterTradeStatus?.avgPrice_1.toLocaleString()}원</p>
                                                         <p> 총 진입 금액: {tradeJobInfo.enterTradeStatus?.totalVolume_1?.toLocaleString()}원 | 진입 수수료: {tradeJobInfo.enterTradeStatus.totalFee_1?.toLocaleString()}원</p>
                                                         <Divider />
-                                                        <p> 진입(해외): {tradeJobInfo.enterTradeStatus?.totalQty_2}BTC, 평균가격: {tradeJobInfo.enterTradeStatus?.avgPrice_2.toLocaleString()}USDT</p>
+                                                        <p> 진입(해외): {tradeJobInfo.enterTradeStatus?.totalQty_2}{tradeJobInfo.symbol_2}, 평균가격: {tradeJobInfo.enterTradeStatus?.avgPrice_2.toLocaleString()}USDT</p>
                                                         <p> 총 진입 금액: {tradeJobInfo.enterTradeStatus?.totalVolume_2?.toLocaleString()}USDT, 진입 수수료: {tradeJobInfo.enterTradeStatus.totalFee_2?.toLocaleString()}USDT</p>
                                                         <Divider />
-                                                        <p> 진입 김프: {tradeJobInfo.enteredPrimium.toFixed(3)}% | 진입 환율: {tradeJobInfo.enteredCurrencyPrice.toFixed(3)}원 | 진입 테더: {tradeJobInfo.enteredThether.toFixed(3).toLocaleString()}원</p>
+                                                        <p> 진입 김프: {tradeJobInfo.enteredPrimium.toFixed(4)}% | 진입 환율: {tradeJobInfo.enteredCurrencyPrice.toFixed(4)}원 | 진입 테더: {tradeJobInfo.enteredThether.toFixed(4).toLocaleString()}원</p>
                                                         {
                                                             tradeJobInfo.exitCompleteType === COMPLETE_TYPE.NONE 
-                                                            ? <p> 변동 탈출 목표 김프: {calculateExitTargetPrimium(tradeJobInfo.targetExitPrimium, tradeJobInfo.enteredCurrencyPrice).toFixed(3)}% | 탈출 목표 테더: {tradeJobInfo.targetExitTheTher.toFixed(2).toLocaleString()}원 </p>
-                                                            : <p> 탈출 시작 김프: {tradeJobInfo.exitStartPrimium.toFixed(3)}% | 탈출 목표 테더: {tradeJobInfo.targetExitTheTher.toFixed(2).toLocaleString()}원 </p>
+                                                            ? <p> 변동 탈출 목표 김프: {calculateExitTargetPrimium(tradeJobInfo.targetExitPrimium, tradeJobInfo.enteredCurrencyPrice).toFixed(4)}% | 탈출 목표 테더: {tradeJobInfo.targetExitTheTher.toFixed(4).toLocaleString()}원 </p>
+                                                            : <p> 탈출 시작 김프: {tradeJobInfo.exitStartPrimium.toFixed(4)}% | 탈출 목표 테더: {tradeJobInfo.targetExitTheTher.toFixed(4).toLocaleString()}원 </p>
                                                         }
                                                         {
                                                             (tradeJobInfo.exitTradeStatus.totalQty_1 > 0 || tradeJobInfo.exitTradeStatus.totalQty_2 > 0)
                                                             ?   <div>
                                                                     <Divider />
                                                                     <Message.Header>탈출 ({getLocalTimeStr(tradeJobInfo.exitTradeStatus.timestamp)}) | {getElapsedTimeStr(tradeJobInfo.enterTradeStatus.timestamp, tradeJobInfo.exitTradeStatus.timestamp)} 소요</Message.Header>
-                                                                    <p> 탈출(국내): {tradeJobInfo.exitTradeStatus?.totalQty_1}BTC | 평균가격: {tradeJobInfo.exitTradeStatus?.avgPrice_1.toLocaleString()}원</p>
+                                                                    <p> 탈출(국내): {tradeJobInfo.exitTradeStatus?.totalQty_1}{tradeJobInfo.symbol_1} | 평균가격: {tradeJobInfo.exitTradeStatus?.avgPrice_1.toLocaleString()}원</p>
                                                                     <p> 총 탈출 금액: {tradeJobInfo.exitTradeStatus?.totalVolume_1?.toLocaleString()}원 | 탈출 수수료: {tradeJobInfo.exitTradeStatus.totalFee_1?.toLocaleString()}원</p>
                                                                     <Divider />
-                                                                    <p> 탈출(해외): {tradeJobInfo.exitTradeStatus?.totalQty_2}BTC, 평균가격: {tradeJobInfo.exitTradeStatus?.avgPrice_2.toLocaleString()}USDT</p>
+                                                                    <p> 탈출(해외): {tradeJobInfo.exitTradeStatus?.totalQty_2}{tradeJobInfo.symbol_2}, 평균가격: {tradeJobInfo.exitTradeStatus?.avgPrice_2.toLocaleString()}USDT</p>
                                                                     <p> 총 탈출 금액: {tradeJobInfo.exitTradeStatus?.totalVolume_2?.toLocaleString()}USDT, 탈출 수수료: {tradeJobInfo.exitTradeStatus.totalFee_2?.toLocaleString()}USDT</p>
                                                                     <Divider />
-                                                                    <p> 탈출 김프: {tradeJobInfo.exitedPrimium.toFixed(3)}% | 탈출 환율: {tradeJobInfo.exitedCurrencyPrice.toFixed(3)}원 | 탈출 테더: {tradeJobInfo.exitedThether.toFixed(3).toLocaleString()}원</p>
+                                                                    <p> 탈출 김프: {tradeJobInfo.exitedPrimium.toFixed(4)}% | 탈출 환율: {tradeJobInfo.exitedCurrencyPrice.toFixed(4)}원 | 탈출 테더: {tradeJobInfo.exitedThether.toFixed(4).toLocaleString()}원</p>
                                                                     <Divider />
-                                                                    <p> 국내 수익: {profitDomastic.toLocaleString()}원 / 해외 수익: {profitOversea.toLocaleString()}원 / 수수료: -{totalFee.toLocaleString()}원</p>
-                                                                    <p> 총 수익: {(profitDomastic + profitOversea - totalFee).toLocaleString()}원 ({profitRate.toFixed(4)}%)</p>
+                                                                    <p> 국내 수익: {tradeJobInfo.profit_1?.toFixed(4)?.toLocaleString()}원 / 해외 수익: {tradeJobInfo.profit_2?.toFixed(4)?.toLocaleString()}원 / 수수료: {(tradeJobInfo.fee_1 + tradeJobInfo.fee_2)?.toFixed(4)?.toLocaleString()}원</p>
+                                                                    <p> 총 수익: {tradeJobInfo.totalProfit?.toFixed(4)?.toLocaleString()}원 ({tradeJobInfo.profitRate?.toFixed(4)}%)</p>
+                                                                    <p> 총 수익 (수수료 포함): {tradeJobInfo.totalProfitIncludeFee?.toFixed(4)?.toLocaleString()}원 ({tradeJobInfo.profitRateIncludeFee?.toFixed(4)}%)</p>
                                                                 </div>
                                                             :  <div></div>
                                                         }

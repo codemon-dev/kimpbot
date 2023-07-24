@@ -1,4 +1,4 @@
-import _ from "lodash";
+import _, { forEach } from "lodash";
 
 import Handlers from "./Handlers";
 import { CoinInfos, IAssetInfo } from "../../interface/IMarketInfo";
@@ -143,6 +143,22 @@ export default class jobWorkerHandler {
             this.notifyJobWorkerInfos();
         });
 
+        this.handlers?.ipcHandler?.registerIPCListeners(IPC_CMD.UPDATE_JOB_WORKER_EXIT_TARGET_PRIMIUM, async(evt, id: string, exitTargetPrimium: number) => {
+            this.handlers?.logHandler?.log?.info("[IPC][UPDATE_JOB_WORKER_EXIT_TARGET_PRIMIUM]")
+            if (this.tradeJobWorkerMap.get(id)) {
+                this.handlers?.logHandler?.log?.info("JobWorker is not stoped. skip UPDATE_JOB_WORKER_EXIT_TARGET_PRIMIUM.")
+                return;
+            }
+            let jobWorkers: IJobWorker[] = await this.handlers?.databaseHandler?.jobworkerDBApi?.getJobWorkerById(id);            
+            jobWorkers.forEach(async (jobWorkerInfo: IJobWorker) => {
+                if (jobWorkerInfo._id === id) {
+                    let newJobWorker = {...jobWorkerInfo, exitTargetPrimium: exitTargetPrimium}
+                    await this.handlers?.databaseHandler?.jobworkerDBApi?.updateJobWorker(newJobWorker)
+                    this.notifyJobWorkerInfos();
+                }
+            })
+        });
+
         this.handlers?.ipcHandler?.registerIPCListeners(IPC_CMD.START_JOB_WORKERS, async(evt, jobWorkers: IJobWorker[]) => {
             this.handlers?.logHandler?.log?.info(`[IPC][START_JOB_WORKERS]`);
             let promises: any = [];
@@ -181,6 +197,9 @@ export default class jobWorkerHandler {
             this.jobWorkerInfos[idx].isStarted = true;                
             this.jobWorkerInfos[idx].exchangeAccountInfo_1 = exchangeAccountInfo_1 && exchangeAccountInfo_1[0] ?_.cloneDeep(exchangeAccountInfo_1[0]) : null;
             this.jobWorkerInfos[idx].exchangeAccountInfo_2 = exchangeAccountInfo_2 && exchangeAccountInfo_2[0]  ?_.cloneDeep(exchangeAccountInfo_2[0]) : null;
+
+            // 업데이트 되는 항목들은 다시 써줘야 함.
+            this.jobWorkerInfos[idx].exitTargetPrimium = jobWorker.exitTargetPrimium;
             this.startJobWorker(this.jobWorkerInfos[idx]);
         })
     }

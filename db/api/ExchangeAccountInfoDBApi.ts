@@ -14,8 +14,10 @@ export default class ExchangeAccountInfoDBApi {
     public handlers: Handlers | undefined;
     constructor(handlers: Handlers | undefined, _onload: any) {
         handlers = handlers;
+        const filename = getDBFilePath(databaseName)
+        handlers?.logHandler?.log?.error(`ExchangeAccountInfoDBApi filename ${filename}`);
         const option: Nedb.DataStoreOptions = {
-            filename: getDBFilePath(databaseName),
+            filename: filename,
             autoload: true,
             timestampData: true,
             onload: (err) => {
@@ -64,6 +66,7 @@ export default class ExchangeAccountInfoDBApi {
             //     this.handlers?.logHandler?.log?.info(doc);
             // });
             resolve(this.decryptExchangeAccountInfos(docs, key));
+            return;
         }
         resolve([]);
     }
@@ -174,7 +177,10 @@ export default class ExchangeAccountInfoDBApi {
                     this.getExchangeAccountInfosCallback(err, docs, key, resolve, reject);
                 })
             } else {
-                if (!req.email) { resolve(null) };
+                if (!req.email) { 
+                    resolve(null);
+                    return;
+                };
                 if (req.exchange) {
                     this.db?.find({email: req.email, exchange: req.exchange}, (err: any, docs: ExchangeAccountInfo[]) => {
                         this.getExchangeAccountInfosCallback(err, docs, key, resolve, reject);

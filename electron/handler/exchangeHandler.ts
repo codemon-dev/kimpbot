@@ -32,6 +32,8 @@ export interface IExchangeCoinInfo {
     minQty: number;
     maxQty: number;
     minNotional: number;
+    pricePrecision: number;
+    quantityPrecision: number;
     liquidationFee: number;
     takerFee: number;
     makerFee: number;
@@ -102,6 +104,8 @@ export default class ExchangeHandler {
             minQty: 0,
             maxQty: 0,
             minNotional: 0,
+            pricePrecision: -1,
+            quantityPrecision: -1,
             liquidationFee: 0,
             takerFee: 0,
             makerFee: 0,

@@ -98,7 +98,7 @@ export interface IBinanceAccount {
 
 
 export interface IBinanceOrderResponse {
-    orderId: number; //3379672655,
+    orderId: any; //3379672655,
     symbol: string; //'BTCUSDT',
     status: string; //'NEW',
     clientOrderId: string; //'Ugn0iig4p4fIXKEraQSFDB',
@@ -123,7 +123,7 @@ export interface IBinanceOrderResponse {
 
 export interface IBinanceUserTrade {
     symbol: string; //'BTCUSDT',
-    id: number; //262086445,
+    id: any; //262086445,
     orderId: number; //3388726196,
     side: string; //'SELL',
     price: string; //'30155.40',

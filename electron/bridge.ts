@@ -79,6 +79,10 @@ export const api = {
     ipcRenderer.send(IPC_CMD.DELETE_JOB_WORKER, id)
   },
 
+  updateJobWorkerTargetPrimium: (id: string, exitTargetPrimium: number) => {
+    ipcRenderer.send(IPC_CMD.UPDATE_JOB_WORKER_EXIT_TARGET_PRIMIUM, id, exitTargetPrimium)
+  },
+
   startJobWorkers: (jobWorkers: IJobWorker[]) => {
     ipcRenderer.send(IPC_CMD.START_JOB_WORKERS, jobWorkers)
   },

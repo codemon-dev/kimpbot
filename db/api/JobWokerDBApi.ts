@@ -11,8 +11,10 @@ export default class JobWokerDBApi {
     public handlers: Handlers | undefined;
     constructor(handlers: Handlers | undefined, _onload: any) {
         this.handlers = handlers;
+        const filename = getDBFilePath(databaseName)
+        handlers?.logHandler?.log?.error(`JobWokerDBApi filename ${filename}`);
         const option: Nedb.DataStoreOptions = {
-            filename: getDBFilePath(databaseName),
+            filename: filename,
             autoload: true,
             timestampData: true,
             onload: (err) => {
@@ -88,6 +90,14 @@ export default class JobWokerDBApi {
         })
     }
 
+    public getJobWorkerById = async (id: string): Promise<any> => {
+        return new Promise((resolve, reject) => {
+            this.db?.find({_id: id}, (err: any, docs: IJobWorker[]) => {
+                this.getJobWorksCallback(err, docs, resolve, reject);
+            })
+        })
+    }
+
     public getJobWorkers = async (userUID: string): Promise<any> => {
         return new Promise((resolve, reject) => {
             this.db?.find({userUID: userUID}, (err: any, docs: IJobWorker[]) => {
@@ -106,6 +116,7 @@ export default class JobWokerDBApi {
             //     this.handlers?.logHandler?.log?.info(doc);
             // });
             resolve(docs);
+            return;
         }
         resolve([]);
     }

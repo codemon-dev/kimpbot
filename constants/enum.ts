@@ -42,6 +42,8 @@ export enum COIN_SYMBOL {
     NONE = "NONE",
     BTC = "BTC",
     ETH = "ETH",
+    XRP = "XRP",
+    DOGE = "DOGE",
     KRW = "KRW",
     USDT = "USDT",
 }
@@ -50,8 +52,12 @@ export enum COIN_PAIR {
     NONE = "NONE",
     BTCKRW = "KRW-BTC",
     ETHKRW = "KRW-ETH",
+    XRPKRW = "KRW-XRP",
+    DOGEKRW = "KRW-DOGE",
     BTCUSDT = "BTCUSDT",
     ETHUSDT = "ETHUSDT",
+    XRPUSDT = "XRPUSDT",
+    DOGEUSDT = "DOGEUSDT",    
 }
   
 export enum UPBIT_ENDPOINT {

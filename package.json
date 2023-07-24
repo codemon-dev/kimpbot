@@ -1,7 +1,7 @@
 {
   "name": "kimplab.bot",
   "author": "kimpLab <kimpLab.help@gmail.com>",
-  "version": "0.9.0",
+  "version": "0.9.3",
   "description": "This is kimchi primium trading bot.",
   "main": ".webpack/main",
   "scripts": {
@@ -24,6 +24,7 @@
     "electron-store": "^8.1.0",
     "firebase": "^9.22.1",
     "firebase-tools": "^12.2.1",
+    "json-bigint": "^1.0.0",
     "jsonwebtoken": "^9.0.0",
     "lightweight-charts": "^4.0.1",
     "lodash": "^4.17.21",

@@ -24,14 +24,29 @@ export const getSymbolFromCoinPair = (coinPair: COIN_PAIR) => {
     if (coinPair === COIN_PAIR.ETHUSDT || coinPair === COIN_PAIR.ETHKRW) {
         return COIN_SYMBOL.ETH;
     }
+    if (coinPair === COIN_PAIR.XRPUSDT || coinPair === COIN_PAIR.XRPKRW) {
+      return COIN_SYMBOL.XRP;
+    }
+    if (coinPair === COIN_PAIR.DOGEUSDT || coinPair === COIN_PAIR.DOGEKRW) {
+      return COIN_SYMBOL.DOGE;
+    }
     return COIN_SYMBOL.NONE;
 }
 
-export const convertExchangeOrederPrice = (exchange: EXCHANGE, price: number) => {
+export const roundUpToDecimalPlaces = (number: number, decimalPlaces: number) => {
+  const multiplier = 10 ** decimalPlaces;
+  return parseFloat((Math.floor(number * multiplier) / multiplier).toFixed(decimalPlaces));
+}
+
+export const convertExchangeOrederPrice = (exchange: EXCHANGE, price: number, pricePrecision?: number) => {
   if (exchange === EXCHANGE.UPBIT) {
     return convertUpbitOrderPrice(price);
-  } else {
-    return Math.floor(price);
+  }else {
+    if (pricePrecision && pricePrecision >= 0) {
+      return parseFloat(price.toFixed(pricePrecision));
+    } else {
+      return Math.floor(price);  
+    }
   }
 }
 

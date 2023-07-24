@@ -141,11 +141,13 @@ export default class UpbitHandler {
             //if (!orderRet || !(orderRet as IUpbitOrdersResponse)?.uuid || (orderRet as IUpbitOrdersResponse)?.state !== "wait") {
                 this.handlers?.logHandler?.log?.error("[UPBIT] fail checkFakeTrade. orderRet: ", orderRet);
                 resolve(false);
+                return;
             }
             const cancleOrderRet = await this.CancleOrder((orderRet as IUpbitOrdersResponse)?.uuid)
             if (!cancleOrderRet) {
                 this.handlers?.logHandler?.log?.error("[UPBIT] fail checkFakeTrade CancleOrder. orderRet: ", orderRet);
                 resolve(false);
+                return;
             }
             resolve(true);
         })
@@ -153,8 +155,7 @@ export default class UpbitHandler {
 
     public orderMarketBuy = (volume: number, price: number, jobWorkerId?: string) => {
         let orderInfos: IOrderInfo[] = []
-        return new Promise(async (resolve) => {
-            this.handlers?.logHandler?.log?.info(`[UPBIT][ORDER][MARKET_BUY] volume: ${volume}, price: ${price}`);
+        return new Promise(async (resolve) => {            
             let orderRet: any;            
             if (volume > 0) {
                 orderRet = await this.order(this.coinPairs[0], ORDER_BID_ASK.BID, UPBIT_ORDER_TYPE.LIMIT, volume, price);
@@ -162,9 +163,11 @@ export default class UpbitHandler {
                 orderRet = await this.order(this.coinPairs[0], ORDER_BID_ASK.BID, UPBIT_ORDER_TYPE.MARKET_BUY, -1, price);
             }
             const orderTimestamp = Date.now();
-            
+            this.handlers?.logHandler?.log?.info(`[UPBIT][ORDER][MARKET_BUY] volume: ${volume}, orderRet: `, orderRet);
             if (!orderRet) {
+                this.handlers?.logHandler?.log?.error(`[UPBIT][ORDER][MARKET_BUY][FAIL] volume: ${volume}, orderRet: `, orderRet);
                 resolve(null);
+                return;
             }
             let cnt = 50;
             const interval = setInterval(async () => {
@@ -202,6 +205,7 @@ export default class UpbitHandler {
                         updatedAt: orderTimestamp,
                     }
                     resolve(tradeInfo);
+                    return;
                 }
                 cnt--;
                 if (cnt < 0) {
@@ -217,10 +221,12 @@ export default class UpbitHandler {
         return new Promise(async (resolve) => {
             let orderRet: any;            
             orderRet = await this.order(this.coinPairs[0], ORDER_BID_ASK.ASK, UPBIT_ORDER_TYPE.MARKET_SELL, volume, -1);
-            const orderTimestamp = Date.now();
             this.handlers?.logHandler?.log?.info(`[UPBIT][ORDER][MARKET_SELL] volume: ${volume}, ret: `, orderRet);
+            const orderTimestamp = Date.now();            
             if (!orderRet) {
+                this.handlers?.logHandler?.log?.error(`[UPBIT][ORDER][MARKET_SELL][FAIL] volume: ${volume}, orderRet: `, orderRet);
                 resolve(null);
+                return;
             }
             let cnt = 50;
             const interval = setInterval(async () => {
@@ -258,6 +264,7 @@ export default class UpbitHandler {
                         updatedAt: orderTimestamp,
                     }
                     resolve(tradeInfo);
+                    return;
                 }
                 cnt--;
                 if (cnt < 0) {
@@ -445,6 +452,8 @@ export default class UpbitHandler {
                         minQty: 0,
                         maxQty: 0,
                         minNotional: parseFloat(res.market.bid.min_total),
+                        pricePrecision: -1,
+                        quantityPrecision: 8,
                     }
                     this.handlers?.logHandler?.log?.info(exchangeCoinInfo);
                     this.exchnageCoinInfos.set(exchangeCoinInfo.coinPair, exchangeCoinInfo);
@@ -543,6 +552,7 @@ export default class UpbitHandler {
                         this.handlers?.logHandler?.log?.error("[UPBIT] fetchUpbitApi endpoint: ", endpoint);
                         this.handlers?.logHandler?.log?.error("[UPBIT] fetchUpbitApi error: ", error);
                         resolve(null) 
+                        return;
                     }
                     // this.handlers?.logHandler?.log?.debug("response: ", response)
                     // this.handlers?.logHandler?.log?.debug("body: ", body);
@@ -552,6 +562,7 @@ export default class UpbitHandler {
                             this.handlers?.logHandler?.log?.error("[UPBIT] [error return] fetchBalance error message: ", body?.error?.message)
                             this.handlers?.logHandler?.log?.error("[UPBIT] [error return] fetchBalance error name: ", body?.error?.name)
                             resolve(null);
+                            return;
                         }
                         const jsonData = JSON.parse(body)?.error;
                         if (jsonData) {
@@ -559,6 +570,7 @@ export default class UpbitHandler {
                             this.handlers?.logHandler?.log?.error("[UPBIT] [error return] fetchBalance error message: ", jsonData.error?.message)
                             this.handlers?.logHandler?.log?.error("[UPBIT] [error return] fetchBalance error name: ", jsonData.error?.name)
                             resolve(null);
+                            return;
                         }
                     } catch (err) {
                         // 오류 아님. 위에서 parsing하는건 error json 파싱위해 하는것임.

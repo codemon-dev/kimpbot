@@ -20,8 +20,8 @@ const initializeApp = async () => {
   await handlers.databaseHandler?.initialize();
   if (mainWindow) {
     handlers?.ipcHandler?.initialize(mainWindow)
-    handlers?.binanceHandler?.startHandler([COIN_PAIR.BTCUSDT, COIN_PAIR.ETHUSDT]);
-    handlers?.upbitHandler?.startHandler([COIN_PAIR.BTCKRW, COIN_PAIR.ETHKRW]);
+    handlers?.binanceHandler?.startHandler([COIN_PAIR.BTCUSDT, COIN_PAIR.ETHUSDT, COIN_PAIR.XRPUSDT, COIN_PAIR.DOGEUSDT]);
+    handlers?.upbitHandler?.startHandler([COIN_PAIR.BTCKRW, COIN_PAIR.ETHKRW, COIN_PAIR.XRPKRW, COIN_PAIR.DOGEKRW]);
     handlers?.storeHandler?.registerIPCListeners();    
     handlers?.marketInfoHandler?.registerIPCListeners();
     handlers?.jobWorkerHandler?.registerIPCListeners();

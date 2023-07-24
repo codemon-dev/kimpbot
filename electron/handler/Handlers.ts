@@ -6,12 +6,13 @@ import StoreHander from "./storeHandler";
 import marketInfoHandler from "./marketInfoHandler";
 import UpbitHandler from "./upbitHandler";
 import jobWorkerHandler from "./jobWorkerHandler";
-import { COIN_PAIR } from "../../constants/enum";
 import primiumHandler from "./primiumHandler";
 import LogHandler from "./logHandler";
+import LockHandler from "./lockHandler";
 
 export default class Handlers {
     public logHandler: LogHandler = new LogHandler(this);
+    public lockHandler: LockHandler | undefined;    
     public currencyHandler: CurrencyHandler | undefined;
     public ipcHandler: IPCHandler | undefined;
     public databaseHandler: DatabaseHandler | undefined;
@@ -26,6 +27,7 @@ export default class Handlers {
     }
 
     public initialize = () => {
+        this.lockHandler = new LockHandler(this);
         this.storeHandler = new StoreHander(this);
         this.databaseHandler = new DatabaseHandler(this);
         this.currencyHandler = new CurrencyHandler(this);
