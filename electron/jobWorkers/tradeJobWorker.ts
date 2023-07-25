@@ -773,8 +773,7 @@ export default class TradeJobWorker {
             this.handlers?.logHandler?.log?.info("first tradeInfo_1_1: ", tradeInfo_1_1);
             this.handlers?.logHandler?.log?.info(`tradeInfo_1.totalQty: ${tradeInfo_1.totalQty}, tradeInfo_1_1.totalQty: ${tradeInfo_1_1.totalQty}, exchangeCoinInfo2.quantityPrecisio: ${exchangeCoinInfo2.quantityPrecision}`);
             this.handlers?.logHandler?.log?.info(`tradeInfo_1.totalQty + tradeInfo_1_1.totalQty: ${tradeInfo_1.totalQty + tradeInfo_1_1.totalQty}`);
-            this.handlers?.logHandler?.log?.info(`troundUpToDecimalPlaces: ${roundUpToDecimalPlaces(tradeInfo_1.totalQty + tradeInfo_1_1.totalQty, exchangeCoinInfo2.quantityPrecision)}`);
-            const res_2 = await this.exchange2Handler?.orderMarketSell(roundUpToDecimalPlaces(tradeInfo_1.totalQty + tradeInfo_1_1.totalQty, exchangeCoinInfo2.quantityPrecision), this.jobWorkerInfo._id);
+            const res_2 = await this.exchange2Handler?.orderMarketSell(tradeInfo_1.totalQty + tradeInfo_1_1.totalQty, this.jobWorkerInfo._id);
             if (!res_2) {
                 this.handlers?.logHandler?.log?.error("Fail to exchange_2 orderMarketSell.")
                 const res_cancle = await this.exchange1Handler?.orderMarketSell(tradeInfo_1.totalQty + tradeInfo_1_1.totalQty, this.jobWorkerInfo._id);

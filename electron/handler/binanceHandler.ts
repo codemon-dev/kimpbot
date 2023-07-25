@@ -178,6 +178,7 @@ export default class BinanceHander {
         return new Promise(async (resolve) => {
             try {
                 let orderRet: any;            
+                volume = this.binance?.roundStep(volume, this.exchnageCoinInfos.get(this.coinPairs[0])?.stepSize)
                 orderRet = await this.binance?.futuresMarketSell(this.coinPairs[0], volume, {newOrderRespType: 'RESULT'});            
                 this.handlers?.logHandler?.log?.info(`[BINANCE][ORDER][MARKET_SELL] volume: ${volume}, orderRet: `, orderRet);
                 if (!orderRet || !orderRet.orderId || !orderRet.symbol) {
