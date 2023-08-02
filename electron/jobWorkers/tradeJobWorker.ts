@@ -171,22 +171,39 @@ export default class TradeJobWorker {
         if (curEnterPrimium <= this.jobWorkerInfo.enterTargetPrimium) {
             // this.handlers?.logHandler?.log?.debug(`11111111cur EnterPrimium: ${curEnterPrimium}, this.jobWorkerInfo.enterTargetPrimium: ${this.jobWorkerInfo.enterTargetPrimium}`)
 
-            // this.handlers?.logHandler?.log?.debug(`222222222: maxBalance: ${maxBalance}, enteredBalance: ${enteredBalance}, avaliableBalance: ${avaliableBalance}`)
-            // 거래소1 최소 구매 금액 보다 큰지 확인 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            if (avaliableBalance <= exchangeCoinInfo1.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee) * 4) {
-                // this.handlers?.logHandler?.log?.debug(`3333333333333: exchangeCoinInfo1.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee): ${exchangeCoinInfo1.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee)}`)
-                return true;
-            }
+            // // this.handlers?.logHandler?.log?.debug(`222222222: maxBalance: ${maxBalance}, enteredBalance: ${enteredBalance}, avaliableBalance: ${avaliableBalance}`)
+            // // 거래소1 최소 구매 금액 보다 큰지 확인 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // if (avaliableBalance <= exchangeCoinInfo1.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee) * 4) {
+            //     // this.handlers?.logHandler?.log?.debug(`3333333333333: exchangeCoinInfo1.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee): ${exchangeCoinInfo1.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee)}`)
+            //     return true;
+            // }
 
-            // 거래소2 최소 구매 금액 및 수량 보다 큰지 확인 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            if (avaliableBalance <= exchangeCoinInfo2.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee) * currencyInfo.price * 4
-            || avaliableBalance <= exchangeCoinInfo2.minQty * coinInfo2.buyPrice * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee) * currencyInfo.price) {
-                return true;
-            }
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // // 거래소2 최소 구매 금액 및 수량 보다 큰지 확인 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // if (avaliableBalance <= exchangeCoinInfo2.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee) * currencyInfo.price * 4
+            // || avaliableBalance <= exchangeCoinInfo2.minQty * coinInfo2.buyPrice * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee) * currencyInfo.price) {
+            //     return true;
+            // }
+            // ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-            if (avaliableBalance - ((exchangeCoinInfo2.minQty * (this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee)* currencyInfo.price)) - (exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee) * 3) < exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee)) {
-                return true;
+            // if (avaliableBalance - ((exchangeCoinInfo2.minQty * (this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee)* currencyInfo.price)) - (exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee) * 3) < exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee)) {
+            //     return true;
+            // }
+
+            const minNotation_1 = 2 * exchangeCoinInfo1.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee);
+            const minNotation_2 = 2 * exchangeCoinInfo2.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee) * currencyInfo.price;
+            const minNotation = Math.max(minNotation_1, minNotation_2)
+
+            const minAmount_1 = ((3 * exchangeCoinInfo2.minQty) * ((this.coinInfo1?.sellPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee))) + minNotation
+            const minAmount_2 = ((3 * exchangeCoinInfo2.minQty) * ((this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee))) * currencyInfo.price + minNotation
+            
+            const finalMinNotation = Math.max(minAmount_1, minAmount_2);
+            // this.handlers?.logHandler?.log?.info(`[processEnter][a] minNotation_1: ${minNotation_1}, minNotation_2: ${minNotation_2}, minNotation: ${minNotation}`);
+            // this.handlers?.logHandler?.log?.info(`[processEnter][a] minAmount_1: ${minAmount_1}, minAmount_2: ${minAmount_2}`);
+            // this.handlers?.logHandler?.log?.info(`[processEnter][a] finalMinNotation: ${finalMinNotation}`);
+
+            if (coinInfo1.accountInfo.avaliableBalance < finalMinNotation || coinInfo2.accountInfo.avaliableBalance * coinInfo2.accountInfo.leverage * currencyInfo.price < finalMinNotation
+                || this.jobWorkerInfo.config.maxInputAmount < finalMinNotation) {
+                return true
             }
 
             let exchane1FakeTradePrice = Math.ceil(coinInfo1.price * 0.8);    // 20프로 아래 가격 매수
@@ -655,21 +672,34 @@ export default class TradeJobWorker {
             // this.handlers?.logHandler?.log?.debug("exchangeCoinInfo2.minQty: ", exchangeCoinInfo2.minQty)
             // this.handlers?.logHandler?.log?.debug("exchangeCoinInfo2.minQty2222222222222: ", (remainedBalance_2 / (this.coinInfo2?.price ?? 0)))
             
-            // 판매 금액보다 2프로 위의 가격으로 팔았을떄를 고려.
-            if (remainedBalance_1 <= exchangeCoinInfo1.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee) * 4            
-            //|| remainedBalance_1 <= exchangeCoinInfo2.minQty * (this.coinInfo2?.buyPrice?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee) * 2
-            // || ((exchangeCoinInfo2.minQty * (this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee) * currencyInfo.price) - (exchangeCoinInfo1.minNotional * 2) * (1.0 + exchangeCoinInfo1.takerFee)) <= exchangeCoinInfo1.minNotional
-            || remainedBalance_2 <= exchangeCoinInfo2.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee)            
-            || (remainedBalance_2 / ((this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE)) <= exchangeCoinInfo2.minQty) {
+            
+            
+            const minNotation_1 = 2 * exchangeCoinInfo1.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee);
+            const minNotation_2 = 2 * exchangeCoinInfo2.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee) * currencyInfo.price;
+            const minNotation = Math.max(minNotation_1, minNotation_2)
+
+            const minAmount_1 = ((3 * exchangeCoinInfo2.minQty) * ((this.coinInfo1?.sellPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee))) + minNotation
+            const minAmount_2 = ((3 * exchangeCoinInfo2.minQty) * ((this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee))) * currencyInfo.price + minNotation
+            
+            const finalMinNotation = Math.max(minAmount_1, minAmount_2);
+            this.handlers?.logHandler?.log?.info(`[enterPosition][b] minNotation_1: ${minNotation_1}, minNotation_2: ${minNotation_2}, minNotation: ${minNotation}`);
+            this.handlers?.logHandler?.log?.info(`[enterPosition][b] minAmount_1: ${minAmount_1}, minAmount_2: ${minAmount_2}`);
+            this.handlers?.logHandler?.log?.info(`[enterPosition][b] finalMinNotation: ${finalMinNotation}`);
+
+            if (remainedBalance_1 < finalMinNotation || remainedBalance_2 * currencyInfo.price < finalMinNotation) {
                 break;
             }
             let orderAmount = 0;
-            const minOrderAmount = exchangeCoinInfo2.minQty * ((this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE) * (1.0 + exchangeCoinInfo2.takerFee)* currencyInfo.price;
-            if (remainedAmount <= spiltAmount || spiltAmount <= minOrderAmount) {
+            const minOrderAmount_1 = 3 * exchangeCoinInfo2.minQty * ((this.coinInfo1?.sellPrice ?? 0) * PRICE_BUFFER_RATE) * (1.0 + exchangeCoinInfo1.takerFee) + minNotation;
+            const minOrderAmount_2 = 3 * exchangeCoinInfo2.minQty * ((this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE) * (1.0 + exchangeCoinInfo2.takerFee) * currencyInfo.price + minNotation;
+            let minOrderAmount = Math.max(minOrderAmount_1, minOrderAmount_2, spiltAmount);
+            minOrderAmount = Math.min(minOrderAmount, remainedAmount)
+
+            if (remainedAmount < 2 * minOrderAmount) {
                 orderAmount = remainedAmount;
                 isLastOrder = true;
             } else {
-                orderAmount = spiltAmount;
+                orderAmount = minOrderAmount;
                 isLastOrder = false;
             }
             this.handlers?.logHandler?.log?.info(`spiltAmount: ${spiltAmount}, coinInfo2.buyPrice: ${this.coinInfo2?.buyPrice}, orderAmount: ${orderAmount}, minOrderAmount: ${minOrderAmount}`);
@@ -683,9 +713,10 @@ export default class TradeJobWorker {
             // console.log("111: ", ((exchangeCoinInfo2.minQty * (this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee)* currencyInfo.price)) )
             // console.log("222: ", (exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee) * 3) )
             // console.log("333: ", exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee) )
-            if (orderAmount - ((exchangeCoinInfo2.minQty * (this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee)* currencyInfo.price)) - (exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee) * 3) < exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee)) {
-                break;
-            }
+            // if (orderAmount - ((exchangeCoinInfo2.minQty * (this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee) * currencyInfo.price)) - (exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee) * 3) 
+            // < exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee)) {
+            //     break;
+            // }
             let ret: any = await this.enterSubProcess(this.coinInfo1, this.coinInfo2, currencyInfo, exchangeCoinInfo1, exchangeCoinInfo2, orderAmount);
             const subProcessRet: ISubProcessRet | any = ret;
             if (ret) {
@@ -772,10 +803,14 @@ export default class TradeJobWorker {
                 tradeInfo_2: null,
                 tradeInfo_cancel: null,
             }
-            const firstOrderAmount = amount - ((exchangeCoinInfo2.minQty * (coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee) * currencyInfo.price)) - (exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee) * 3);
+            const firstOrderAmount = amount - (exchangeCoinInfo2.minQty * (coinInfo1?.sellPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee)) - ((exchangeCoinInfo1.minNotional * 2) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee));
+            
             // const firstOrderAmount = amount - ((exchangeCoinInfo2.minQty * (coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee)* currencyInfo.price));
             let firstOrderAmoutWithoutFee = firstOrderAmount / (1.0 + exchangeCoinInfo1.takerFee);
-            this.handlers?.logHandler?.log?.info(`firstOrderAmount: ${firstOrderAmount}, firstOrderAmoutWithoutFee: ${firstOrderAmoutWithoutFee}, amount: ${amount}, calculate: ${(exchangeCoinInfo2.minQty * (coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee)* currencyInfo.price)}`);
+            this.handlers?.logHandler?.log?.info(`amount: ${amount}`);
+            this.handlers?.logHandler?.log?.info(`(exchangeCoinInfo2.minQty * (coinInfo1?.sellPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee)): ${(exchangeCoinInfo2.minQty * (coinInfo1?.sellPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee))}, `);
+            this.handlers?.logHandler?.log?.info(`((exchangeCoinInfo1.minNotional * 2) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee)): ${((exchangeCoinInfo1.minNotional * 2) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee))}`);
+            this.handlers?.logHandler?.log?.info(`firstOrderAmount: ${firstOrderAmount}, firstOrderAmoutWithoutFee: ${firstOrderAmoutWithoutFee}`);
             if (firstOrderAmoutWithoutFee <= 0 || firstOrderAmoutWithoutFee <= exchangeCoinInfo1.minNotional) {
                 resolve(null);
                 return;
@@ -790,7 +825,6 @@ export default class TradeJobWorker {
             this.handlers?.logHandler?.log?.info("[enterSubProcess] tradeInfo_1: ", tradeInfo_1);
             let remainedQty = exchangeCoinInfo2.minQty - (tradeInfo_1.totalQty % exchangeCoinInfo2.minQty);            
             let orderPirce = convertExchangeOrederPrice(this.exchange1Handler?.exchange ?? EXCHANGE.NONE, coinInfo1.sellPrice * PRICE_BUFFER_RATE);
-            // let qty = Math.floor((exchangeCoinInfo1.minNotional * 2) / orderPirce / exchangeCoinInfo2.minQty) * exchangeCoinInfo2.minQty
             let qty = (Math.floor(((exchangeCoinInfo1.minNotional * 2) / orderPirce) / exchangeCoinInfo2.minQty) + 1) * exchangeCoinInfo2.minQty
             remainedQty += parseFloat(qty.toFixed(exchangeCoinInfo1.quantityPrecision))
 
