@@ -90,6 +90,14 @@ export default class TradeJobInfoDBApi {
         })
     }
 
+    public getTradeJobInfosByJobWorkerId = async (jobWorkerId: string): Promise<any> => {
+        return new Promise((resolve, reject) => {
+            this.db?.find({jobWrokerId: jobWorkerId}, (err: any, docs: ITradeJobInfo[]) => {
+                this.getTradeJobInfosCallback(err, docs, resolve, reject);
+            })
+        })
+    }
+
     public getTradeJobInfos = async (userUID: string): Promise<any> => {
         return new Promise((resolve, reject) => {
             this.db?.find({userUID: userUID}, (err: any, docs: ITradeJobInfo[]) => {

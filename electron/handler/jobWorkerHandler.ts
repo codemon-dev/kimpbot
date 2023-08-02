@@ -2,7 +2,7 @@ import _, { forEach } from "lodash";
 
 import Handlers from "./Handlers";
 import { CoinInfos, IAssetInfo } from "../../interface/IMarketInfo";
-import { IJobWorker, IJobWorkerInfo, ITradeJobInfo } from "../../interface/ITradeInfo";
+import { COMPLETE_TYPE, IJobWorker, IJobWorkerInfo, ITradeJobInfo } from "../../interface/ITradeInfo";
 import { IPC_CMD } from "../../constants/ipcCmd";
 import { IUserInfo } from "../../interface/IUserInfo";
 import TradeJobWorker from "../jobWorkers/tradeJobWorker";
@@ -73,7 +73,7 @@ export default class jobWorkerHandler {
             this.handlers?.logHandler?.log?.error(`${jobWorkerInfo._id} is already started. skip startJobWorker.`);
             return;
         }
-        const jobWorker = new TradeJobWorker(this.handlers!, jobWorkerInfo, this.notifyJobWorkerInfos)
+        const jobWorker = new TradeJobWorker(this.handlers!, jobWorkerInfo, this.notifyJobWorkerInfos, this.stopJobWorker)
         await jobWorker.initialize();
 
         this.tradeJobWorkerMap.set(jobWorkerInfo._id, jobWorker);
@@ -95,6 +95,7 @@ export default class jobWorkerHandler {
         }
         tradeJobWorker.dispose();
         this.tradeJobWorkerMap.delete(jobWorkerInfo._id);
+        this.notifyJobWorkerInfos()
     }
 
 
@@ -150,11 +151,40 @@ export default class jobWorkerHandler {
                 return;
             }
             let jobWorkers: IJobWorker[] = await this.handlers?.databaseHandler?.jobworkerDBApi?.getJobWorkerById(id);            
-            jobWorkers.forEach(async (jobWorkerInfo: IJobWorker) => {
-                if (jobWorkerInfo._id === id) {
-                    let newJobWorker = {...jobWorkerInfo, exitTargetPrimium: exitTargetPrimium}
+
+            // tradeJobInfo.targetExitTheTher = tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01));
+            jobWorkers.forEach(async (jobWorkerObj: IJobWorker) => {
+                if (jobWorkerObj._id === id) {
+                    let newJobWorker: IJobWorker = {...jobWorkerObj, exitTargetPrimium: exitTargetPrimium}
+                    newJobWorker.tradeJobInfos.forEach((tradeJobInfo: ITradeJobInfo, index: number) => {
+                        if (tradeJobInfo.enterCompleteType === COMPLETE_TYPE.SUCCESS && tradeJobInfo.exitCompleteType === COMPLETE_TYPE.NONE) {
+                            newJobWorker.tradeJobInfos[index].targetExitPrimium = exitTargetPrimium;
+                            newJobWorker.tradeJobInfos[index].targetExitTheTher = tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01));
+                        }
+                    })                    
                     await this.handlers?.databaseHandler?.jobworkerDBApi?.updateJobWorker(newJobWorker)
+
+                    let tradeJobInfos: ITradeJobInfo[] = await this.handlers?.databaseHandler?.tradeJobInfoDBApi?.getTradeJobInfosByJobWorkerId(id)
+
+                    tradeJobInfos.forEach(async(tradeJobInfo: ITradeJobInfo, index: number) => {
+                        if (tradeJobInfo.enterCompleteType === COMPLETE_TYPE.SUCCESS && tradeJobInfo.exitCompleteType === COMPLETE_TYPE.NONE) {
+                            tradeJobInfos[index].targetExitPrimium = exitTargetPrimium;
+                            tradeJobInfos[index].targetExitTheTher = tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01));
+                        }
+                        await this.handlers?.databaseHandler?.tradeJobInfoDBApi?.updateTradeJobInfo(tradeJobInfos[index])
+                    })
                     this.notifyJobWorkerInfos();
+                }
+            })
+            this.jobWorkerInfos.forEach((jobWorkerInfoObj: IJobWorkerInfo, index1: number) => {
+                if (jobWorkerInfoObj._id === id) {
+                    this.jobWorkerInfos[index1] = {...jobWorkerInfoObj, exitTargetPrimium: exitTargetPrimium}
+                    jobWorkerInfoObj.tradeJobInfos.forEach((tradeJobInfo: ITradeJobInfo, index2: number) => {
+                        if (tradeJobInfo.enterCompleteType === COMPLETE_TYPE.SUCCESS && tradeJobInfo.exitCompleteType === COMPLETE_TYPE.NONE) {
+                            this.jobWorkerInfos[index1].tradeJobInfos[index2].targetExitPrimium = exitTargetPrimium;
+                            this.jobWorkerInfos[index1].tradeJobInfos[index2].targetExitTheTher = tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01));
+                        }
+                    }) 
                 }
             })
         });

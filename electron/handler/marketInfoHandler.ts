@@ -2,7 +2,7 @@ import { IpcMainEvent } from "electron";
 import { IPC_CMD } from "../../constants/ipcCmd";
 import Handlers from "./Handlers";
 import { CoinInfo, IMarketInfo, IReqMarketInfo } from "../../interface/IMarketInfo";
-import { ICurrencyInfo, ICurrencyInfos } from "../../interface/ICurrency";
+import { ICurrencyInfos } from "../../interface/ICurrency";
 import _ from "lodash";
 import { COIN_PAIR } from "../../constants/enum";
 export default class marketInfoHandler {
@@ -36,6 +36,9 @@ export default class marketInfoHandler {
     }
 
     private checkAllData = () => {
+        if (!this.handlers) {
+            return;
+        }
         if (this.handlers?.binanceHandler?.coinInfos[COIN_PAIR.BTCUSDT]) {
             // this.marketInfo.exchangeRateInfo = 
             this.marketInfo.coinInfos[COIN_PAIR.BTCUSDT] = _.cloneDeep(this.handlers?.binanceHandler?.coinInfos[COIN_PAIR.BTCUSDT])

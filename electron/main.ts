@@ -1,8 +1,10 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, crashReporter } from 'electron'
 import isDev from "electron-is-dev"
 import path from 'path'
+import fs from 'fs'
 import Handlers from './handler/Handlers'
 import { COIN_PAIR, COIN_SYMBOL, EXCHANGE } from '../constants/enum'
+import { DATA_LOG_DIR_PATH } from '../constants/constants'
 
 
 let mainWindow: BrowserWindow | undefined | null
@@ -55,10 +57,26 @@ const createWindow = () => {
   })
 }
 
+// const logPath = `${DATA_LOG_DIR_PATH}/temp`
+// if (fs.existsSync(logPath) === false) {
+//   fs.mkdirSync(logPath, { recursive: true });
+// }
+// app.setPath('temp', logPath)
+// crashReporter.start({
+//   productName: 'YourName',
+//   companyName: 'YourCompany',
+//   submitURL: 'https://your-domain.com/url-to-submit',
+//   // autoSubmit: true
+// })
+
 app.on('ready', createWindow)
   .whenReady()
   .then(() => {
     initializeApp();
+    setInterval(() => {
+      handlers?.logHandler?.log?.info(`[SERVER WATCHDOG] I'm alive`)
+      // process.crash()
+    }, 60000)
   })
   .catch(e => handlers?.logHandler?.log?.error(e))
 

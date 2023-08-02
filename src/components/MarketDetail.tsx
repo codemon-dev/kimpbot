@@ -483,7 +483,7 @@ const MarketDetail = () => {
                                             <Card.Content extra>
                                                 <div>        
                                                     <Form onSubmit={onChangeExitTargetPrimium}>
-                                                        <Header as='h2'>탈출김프(%)</Header>
+                                                        <Header as='h4'>탈출김프(%)</Header>
                                                         <Input              
                                                         type={"number"}
                                                         step={"0.01"} 

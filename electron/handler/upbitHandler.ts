@@ -152,8 +152,7 @@ export default class UpbitHandler {
         })
     }
 
-    public orderMarketBuy = (volume: number, price: number, jobWorkerId?: string) => {
-        let orderInfos: IOrderInfo[] = []
+    public orderMarketBuy = (volume: number, price: number, jobWorkerId?: string) => {        
         return new Promise(async (resolve) => {            
             let orderRet: any;            
             if (volume > 0) {
@@ -169,10 +168,16 @@ export default class UpbitHandler {
                 return;
             }
             let cnt = 50;
+            let isChecking = false;
             const interval = setInterval(async () => {
+                if (isChecking === true) {
+                    return;
+                }
+                isChecking = true;
                 let response: any = await this.fetchOrder(orderRet.uuid)
                 const orderRes: IUpbitOrderResponse = response;
-                if (orderRes.state === "cancel" || orderRes.state === "done") {
+                let orderInfos: IOrderInfo[] = []
+                if (orderRes.state === "cancel" || orderRes.state === "done") {                    
                     clearInterval(interval);
                     let qty = 0.0;
                     let funds = 0.0;
@@ -203,20 +208,22 @@ export default class UpbitHandler {
                         createdAt: orderTimestamp,
                         updatedAt: orderTimestamp,
                     }
-                    resolve(tradeInfo);
+                    resolve(tradeInfo);                    
+                    isChecking = false;
                     return;
                 }
                 cnt--;
                 if (cnt < 0) {
                     clearInterval(interval);
                     resolve(null);
+                    isChecking = false;
+                    return;
                 }
             }, 200)
         })
     }
 
-    public orderMarketSell = async (volume: number, jobWorkerId?: string) => {
-        let orderInfos: IOrderInfo[] = []
+    public orderMarketSell = async (volume: number, jobWorkerId?: string) => {        
         return new Promise(async (resolve) => {
             let orderRet: any;            
             orderRet = await this.order(this.coinPairs[0], ORDER_BID_ASK.ASK, UPBIT_ORDER_TYPE.MARKET_SELL, volume, -1);
@@ -228,9 +235,14 @@ export default class UpbitHandler {
                 return;
             }
             let cnt = 50;
+            let isChecking = false;
             const interval = setInterval(async () => {
+                if (isChecking === true) {
+                    return;
+                }
                 let response: any = await this.fetchOrder(orderRet.uuid)
                 const orderRes: IUpbitOrderResponse = response;
+                let orderInfos: IOrderInfo[] = []
                 if (orderRes.state === "cancel" || orderRes.state === "done") {
                     clearInterval(interval);
                     let qty = 0.0;
@@ -263,12 +275,15 @@ export default class UpbitHandler {
                         updatedAt: orderTimestamp,
                     }
                     resolve(tradeInfo);
+                    isChecking = false;
                     return;
                 }
                 cnt--;
                 if (cnt < 0) {
-                    clearInterval(interval);
+                    clearInterval(interval);                    
                     resolve(null);
+                    isChecking = false;
+                    return;
                 }
             }, 200)
         })
@@ -647,7 +662,7 @@ export default class UpbitHandler {
         // this.tradeWS.send(`${JSON.stringify([{ ticket: this.ticket }, { ...payload }, { format }])}`)
         this.tradeWS.addEventListener('message', (payload) => {
             try {   
-                this.handlers?.logHandler?.log?.debug(JSON.stringify(payload.data, null, 4))
+                // this.handlers?.logHandler?.log?.debug(`[UPBIT][tradeWS]: ${JSON.stringify(payload.data, null, 4)}`)
                 const response: UpbitSocketSimpleResponse | UPBIT_PONG_RESPONSE = {...(JSON.parse(payload.data.toString('utf-8')))};
                 if (this.isPongResponse(response) === true) {
                     //this.handlers?.logHandler?.log?.debug("pong. ", response);

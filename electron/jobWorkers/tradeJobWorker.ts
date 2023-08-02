@@ -1,6 +1,6 @@
 import _ from 'lodash';
 import { ACCOUNT_INFO, CoinInfo, IAssetInfo } from "../../interface/IMarketInfo";
-import { COMPLETE_TYPE, IJobWorker, ITradeInfo, ITradeJobInfo } from "../../interface/ITradeInfo";
+import { COMPLETE_TYPE, IJobWorker, IJobWorkerInfo, ITradeInfo, ITradeJobInfo } from "../../interface/ITradeInfo";
 import Handlers from "../handler/Handlers";
 import ExchangeHandler, { ExchangeHandlerConfig, IExchangeCoinInfo } from "../handler/exchangeHandler";
 import { ICurrencyInfo } from '../../interface/ICurrency';
@@ -43,12 +43,17 @@ export default class TradeJobWorker {
 
     private enterCnt = 0;
     private exitCnt = 0;
+    private isOnlyOneTimeJob = false;
+    private oneTimeJobCompleted = false;
 
-    constructor(handlers: Handlers, jobWorkerInfo: IJobWorker, notifyJobWokerInfoCallback: any) {
+    private stopJobWorkerCallback: any = null;
+
+    constructor(handlers: Handlers, jobWorkerInfo: IJobWorker, notifyJobWokerInfoCallback: any, stopJobWorkerCallback: any) {
         handlers.logHandler?.log?.info("crate TradeJobWorker.")
         this.handlers = handlers;
         this.jobWorkerInfo = jobWorkerInfo;
         this.notifyJobWokerInfoCallback = notifyJobWokerInfoCallback;
+        this.stopJobWorkerCallback = stopJobWorkerCallback;
         this.assetInfo = {
             jobWorkerId: jobWorkerInfo._id ?? "",
             currencyPrice: 0,
@@ -66,6 +71,14 @@ export default class TradeJobWorker {
             margin_1: 0,
             margin_2: 0,
         }
+        this.isOnlyOneTimeJob = jobWorkerInfo.exitTargetPrimium <= jobWorkerInfo.enterTargetPrimium ? true: false;
+        const interval = setInterval(() => {
+            if (this.isDisposed === true) {
+                this.handlers?.logHandler?.log?.info("[WATHDOG][TRADEJOB_WORKER] Job disposed. turn off watchdog. id: ", this.jobWorkerInfo._id);
+                clearInterval(interval);
+            }
+            this.handlers?.logHandler?.log?.info("[WATHDOG][TRADEJOB_WORKER] I'm still alive. id: ", this.jobWorkerInfo._id);
+        }, 60000)
     }
 
     public initialize = async () => {
@@ -357,14 +370,25 @@ export default class TradeJobWorker {
         return true;
     }
 
+    private isOneTimeJobCompleted = () => {
+        if (this.isOnlyOneTimeJob === true && this.oneTimeJobCompleted === true) {
+            return true;
+        }
+        return false;
+    }
+
     private processJobWorker = async () => {        
         if (this.isDisposed === true || this.handlers.lockHandler?.tradeJobLock.isLocked === true || this.lock_processJobWoker.isLocked === true) {
             return;
         }
 
+        if (this.isOneTimeJobCompleted() === true) {
+            return;
+        }
+
         try {
             await this.handlers.lockHandler?.tradeJobLock.acquire();
-            await this.lock_processJobWoker.acquire();
+            await this.lock_processJobWoker?.acquire();
             await this.lock.acquire();
             const coinInfo1 = _.cloneDeep(this.coinInfo1)
             const coinInfo2 = _.cloneDeep(this.coinInfo2)
@@ -372,6 +396,12 @@ export default class TradeJobWorker {
             const exchangeCoinInfo1 = _.cloneDeep(this.exchangeCoinInfo1)
             const exchangeCoinInfo2 = _.cloneDeep(this.exchangeCoinInfo2)
             this.lock.release();
+            
+            if (this.isOneTimeJobCompleted() === true) {
+                this.handlers.lockHandler?.tradeJobLock.release();
+                this.lock_processJobWoker?.release();
+                return;
+            }    
             
             if (!exchangeCoinInfo1 || !exchangeCoinInfo2 
                 || exchangeCoinInfo1.status === false || exchangeCoinInfo2.status === false
@@ -389,7 +419,7 @@ export default class TradeJobWorker {
                 this.isProcessWorking = false;
                 this.handlers?.logHandler?.log?.info("wating run processJobWorker.")
                 setTimeout(() => {
-                    this.lock_processJobWoker.release();
+                    this.lock_processJobWoker?.release();
                 }, 5000)
                 this.handlers.lockHandler?.tradeJobLock.release();
                 return;
@@ -398,27 +428,43 @@ export default class TradeJobWorker {
                 this.handlers?.logHandler?.log?.info("start run processJobWorker again.")
             }
             this.isProcessWorking = true;
-            let ret = await this.processEnter(exchangeCoinInfo1, exchangeCoinInfo2, coinInfo1, coinInfo2, currencyInfo);
-            if (ret === false) {
+            let ret1 = await this.processEnter(exchangeCoinInfo1, exchangeCoinInfo2, coinInfo1, coinInfo2, currencyInfo);
+            if (ret1 === false) {
                 setTimeout(() => {
                     this.lock_processJobWoker.release();
                 }, 5000)    // 5초
                 this.handlers.lockHandler?.tradeJobLock.release();
                 return;
             }
-            ret = await this.processExit(exchangeCoinInfo1, exchangeCoinInfo2, coinInfo1, coinInfo2, currencyInfo);
-            if (ret === false) {
+            if (!this.exchange1Handler || !this.exchange2Handler || this.isDisposed) {
+                this.handlers.lockHandler?.tradeJobLock.release();
+                this.lock_processJobWoker?.release();
+                return;
+            }
+            let ret2 = await this.processExit(exchangeCoinInfo1, exchangeCoinInfo2, coinInfo1, coinInfo2, currencyInfo);            
+            if (ret2 === false) {
                 setTimeout(() => {
-                    this.lock_processJobWoker.release();
+                    this.lock_processJobWoker?.release();
                 }, 5000)    // 5초
                 this.handlers.lockHandler?.tradeJobLock.release();
                 return;
+            }
+            if (ret1 === true || ret2 === true) {
+                if (this.isOnlyOneTimeJob === true) {
+                    this.oneTimeJobCompleted = true;
+                }
             }
             this.handlers.lockHandler?.tradeJobLock.release();
-            this.lock_processJobWoker.release();
+            this.lock_processJobWoker?.release();
+            if (ret1 === true || ret2 === true) {
+                if (this.isOnlyOneTimeJob === true) {
+                    this.handlers?.logHandler?.log?.error("isOnlyOneTimeJob is true. dispose jobwoekr");
+                    this.stopJobWorkerCallback(this.jobWorkerInfo);
+                }
+            }
         } catch (err) {
             this.handlers.lockHandler?.tradeJobLock.release();
-            this.lock_processJobWoker.release();
+            this.lock_processJobWoker?.release();
             this.lock.release();
             this.handlers?.logHandler?.log?.error("processJobWorker error: ", err);
         }
@@ -441,6 +487,9 @@ export default class TradeJobWorker {
     }
 
     private isSameAccountInfo = async (accountInfo1: ACCOUNT_INFO, accountInfo2: ACCOUNT_INFO) => {
+        if (!accountInfo1 || !accountInfo2) {
+            return false;
+        }
         if (accountInfo1.avaliableBalance != accountInfo2.avaliableBalance){
             this.handlers?.logHandler?.log?.info(`[isSameAccountInfo][err] avaliableBalance: ${accountInfo1.avaliableBalance}, ${accountInfo2.avaliableBalance}`);
         }
@@ -623,7 +672,7 @@ export default class TradeJobWorker {
                 orderAmount = spiltAmount;
                 isLastOrder = false;
             }
-            this.handlers?.logHandler?.log?.info(`spiltAmount: ${spiltAmount}, coinInfo2.buyPrice: ${coinInfo2.buyPrice}, orderAmount: ${orderAmount}, minOrderAmount: ${minOrderAmount}`);
+            this.handlers?.logHandler?.log?.info(`spiltAmount: ${spiltAmount}, coinInfo2.buyPrice: ${this.coinInfo2?.buyPrice}, orderAmount: ${orderAmount}, minOrderAmount: ${minOrderAmount}`);
 
             if (orderAmount < minOrderAmount) {
                 break;
@@ -741,7 +790,8 @@ export default class TradeJobWorker {
             this.handlers?.logHandler?.log?.info("[enterSubProcess] tradeInfo_1: ", tradeInfo_1);
             let remainedQty = exchangeCoinInfo2.minQty - (tradeInfo_1.totalQty % exchangeCoinInfo2.minQty);            
             let orderPirce = convertExchangeOrederPrice(this.exchange1Handler?.exchange ?? EXCHANGE.NONE, coinInfo1.sellPrice * PRICE_BUFFER_RATE);
-            let qty = Math.floor((exchangeCoinInfo1.minNotional * 2) / orderPirce / exchangeCoinInfo2.minQty) * exchangeCoinInfo2.minQty
+            // let qty = Math.floor((exchangeCoinInfo1.minNotional * 2) / orderPirce / exchangeCoinInfo2.minQty) * exchangeCoinInfo2.minQty
+            let qty = (Math.floor(((exchangeCoinInfo1.minNotional * 2) / orderPirce) / exchangeCoinInfo2.minQty) + 1) * exchangeCoinInfo2.minQty
             remainedQty += parseFloat(qty.toFixed(exchangeCoinInfo1.quantityPrecision))
 
             let res_1_1 = await this.exchange1Handler?.orderMarketBuy(remainedQty, orderPirce, this.jobWorkerInfo._id);
@@ -824,12 +874,17 @@ export default class TradeJobWorker {
         this.handlers?.logHandler?.log?.info("start exitPosition. this.currencyInfo: ", this.currencyInfo)
 
         let remainedQty = tradeJobInfo.enterTradeStatus.totalQty_1;
-        let minQty = (this.exchangeCoinInfo2?.minQty ?? 0);
-        if (minQty === 0) {
+        // let minQty = (this.exchangeCoinInfo2?.minQty ?? 0);
+        let minQty = (this.exchangeCoinInfo2?.minQty ?? 0) + (Math.floor((this.exchangeCoinInfo2?.minNotional ?? 0) / (this.coinInfo2?.sellPrice ?? 0)) / (this.exchangeCoinInfo2?.minQty ?? 0))
+        if (minQty === 0 || remainedQty < minQty) {
+            this.handlers?.logHandler?.log?.error(`exitPosition is something wrong: minQty: ${minQty}, remainedQty: ${remainedQty}, minQty: ${minQty}, minNotional: ${this.exchangeCoinInfo2?.minNotional}, sellPrice: ${this.coinInfo2?.sellPrice}`);
             return;
         }
-        while(remainedQty >= minQty) {
-            const qty = Math.min(remainedQty, this.jobWorkerInfo.config.splitTradeQty);
+        while(remainedQty >= minQty) {            
+            let qty = Math.min(remainedQty, this.jobWorkerInfo.config.splitTradeQty);
+            if (remainedQty < minQty * 2) {
+                qty = remainedQty   
+            }
             let ret: any = await this.exitSubProcess(qty)
             const subProcessRet: ISubProcessRet | any = ret;
             if (ret) {
@@ -841,12 +896,12 @@ export default class TradeJobWorker {
                 tradeJobInfo.exitTradeStatus.totalQty_1 += ((subProcessRet.tradeInfo_1?.totalQty ?? 0) + (subProcessRet.tradeInfo_1_1?.totalQty ?? 0));
                 tradeJobInfo.exitTradeStatus.totalFee_1 += ((subProcessRet.tradeInfo_1?.totalFee ?? 0) + (subProcessRet.tradeInfo_1_1?.totalFee ?? 0));
                 tradeJobInfo.exitTradeStatus.avgPrice_1 = tradeJobInfo.exitTradeStatus.totalVolume_1 / tradeJobInfo.exitTradeStatus.totalQty_1;
-    
+
                 tradeJobInfo.exitTradeStatus.totalVolume_2 += subProcessRet.tradeInfo_2?.totalVolume ?? 0;
                 tradeJobInfo.exitTradeStatus.totalQty_2 += subProcessRet.tradeInfo_2?.totalQty ?? 0;
                 tradeJobInfo.exitTradeStatus.totalFee_2 += subProcessRet.tradeInfo_2?.totalFee ?? 0;
                 tradeJobInfo.exitTradeStatus.avgPrice_2 = tradeJobInfo.exitTradeStatus.totalVolume_2 / tradeJobInfo.exitTradeStatus.totalQty_2;             
-    
+
                 if (subProcessRet.tradeInfo_1) {
                     tradeJobInfo.exitTradeInfo_1.push(subProcessRet.tradeInfo_1);
                 }
@@ -883,9 +938,10 @@ export default class TradeJobWorker {
         this.handlers?.logHandler?.log?.info("complete exitPosition. tradeJobInfo: ", tradeJobInfo);
         return tradeJobInfo;
     }
+
     private exitSubProcess = (qty: number) => {
         return new Promise(async (resolve) => {
-            this.handlers?.logHandler?.log?.info("exitPosition.")
+            this.handlers?.logHandler?.log?.info(`exitPosition. qty: ${qty}`)
             
             let ret: ISubProcessRet = {
                 isSuccess: false,
@@ -912,6 +968,7 @@ export default class TradeJobWorker {
                 return;
             }
             let tradeInfo_2: ITradeInfo = res_2 as ITradeInfo;
+            this.handlers?.logHandler?.log?.info("[exitSubProcess] tradeInfo_2: ", tradeInfo_2);
             ret = {
                 isSuccess: res_1 && res_2? true: false,
                 tradeInfo_1, 
@@ -999,7 +1056,8 @@ export default class TradeJobWorker {
             this.handlers?.logHandler?.log?.error("this.jobWorkerInfo is null. skip start");
             return false;
         }
-        this.handlers?.logHandler?.log?.info("start TradeJobWorker. id: ", this.jobWorkerInfo._id);        
+        this.handlers?.logHandler?.log?.info("start TradeJobWorker. id: ", this.jobWorkerInfo._id);
+
         let ret = await this.exchange1Handler?.initialize();
         if (ret === false) {
             this.handlers?.logHandler?.log?.error("fail initialize exchange1Handler");
@@ -1021,7 +1079,9 @@ export default class TradeJobWorker {
     }
 
     public dispose = () => {
-        this.handlers?.logHandler?.log?.info("dispose TradeJobWorker. id: ", this.jobWorkerInfo._id);
+        this.handlers?.logHandler?.log?.info("dispose TradeJobWorker");
+        this.lock_processJobWoker?.acquire();
+        this.handlers?.logHandler?.log?.info("start dispose TradeJobWorker. id: ", this.jobWorkerInfo._id);
         this.initAllData();
         if (this.jobWorkerInfo._id) {
             this.handlers.currencyHandler?.removeListener(this.jobWorkerInfo._id);
@@ -1032,5 +1092,6 @@ export default class TradeJobWorker {
         delete this.exchange2Handler;
         this.exchange1Handler = undefined;
         this.exchange2Handler = undefined;
+        this.lock_processJobWoker?.release();
     }
 }
