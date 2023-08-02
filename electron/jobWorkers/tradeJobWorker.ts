@@ -704,7 +704,7 @@ export default class TradeJobWorker {
         if (tradeJobInfo.enterTradeStatus.totalQty_fail === 0 && tradeJobInfo.enterTradeStatus.totalQty_cancel === 0
             || tradeJobInfo.enterTradeStatus.totalQty_fail > 0 && tradeJobInfo.enterTradeStatus.totalQty_fail === tradeJobInfo.enterTradeStatus.totalQty_cancel) {
             tradeJobInfo.enterCompleteType = COMPLETE_TYPE.SUCCESS;
-            tradeJobInfo.targetExitTheTher = tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.targetEnterPrimium * 0.01));
+            tradeJobInfo.targetExitTheTher = tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01));
         } else {
             tradeJobInfo.enterCompleteType = COMPLETE_TYPE.FAIL;
         }

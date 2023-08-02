@@ -15,8 +15,7 @@ import { IUpbitAccount, IUpbitOrderResponse, IUpbitOrdersResponse, UpbitChanceRe
 import { IPC_CMD } from "../../constants/ipcCmd";
 import { ExchangeHandlerConfig, IExchangeCoinInfo } from './exchangeHandler';
 import { getSymbolFromCoinPair } from '../../util/tradeUtil';
-import { resolve } from '../../webpack/main.webpack';
-import { FEE_TYPE, ORDER_TYPE, IOrderInfo, ITradeInfo } from '../../interface/ITradeInfo';
+import { ORDER_TYPE, IOrderInfo, ITradeInfo } from '../../interface/ITradeInfo';
 import { FETCH_BALANCE_INTERVAL } from '../../constants/constants';
 
 const UPBI_WS_ADDR = "wss://api.upbit.com/websocket/v1"
@@ -648,6 +647,7 @@ export default class UpbitHandler {
         // this.tradeWS.send(`${JSON.stringify([{ ticket: this.ticket }, { ...payload }, { format }])}`)
         this.tradeWS.addEventListener('message', (payload) => {
             try {   
+                this.handlers?.logHandler?.log?.debug(JSON.stringify(payload.data, null, 4))
                 const response: UpbitSocketSimpleResponse | UPBIT_PONG_RESPONSE = {...(JSON.parse(payload.data.toString('utf-8')))};
                 if (this.isPongResponse(response) === true) {
                     //this.handlers?.logHandler?.log?.debug("pong. ", response);

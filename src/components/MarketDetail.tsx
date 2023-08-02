@@ -56,10 +56,12 @@ const MarketDetail = () => {
     const [tradeJobs, setTradeJobs] = useState<ITradeJobInfo[]>([]);
     
     const symbolRef = useRef<COIN_SYMBOL>(COIN_SYMBOL.BTC);
-    const [enterPrimium, setEnterPrimium] = useState("%");
-    const [exitPrimium, setExitPrimium] = useState("%");
+    const [enterPrimium, setEnterPrimium] = useState("");
+    const [exitPrimium, setExitPrimium] = useState("");
     const [enterThether, setEnterThether] = useState("");
     const [exitThether, setExitThether] = useState("");
+    const currentPrimium = useRef<number>()
+    const currentThether = useRef<number>()
     
     const [domesticAccountInfo, setDomesticAccountInfo] = useState<ExchangeAccountInfo>(defaultExchangeAccountInfo)
     const [overseaAccountInfo, setOverseaAccountInfo] = useState<ExchangeAccountInfo>(defaultExchangeAccountInfo)
@@ -86,6 +88,8 @@ const MarketDetail = () => {
                 setExitPrimium(`${calculatePrimium(domesticCoinInfo.buyPrice, overseaCoinInfo.sellPrice, marketInfo.currencyInfos[site]?.price)?.toFixed(2)}%`);
                 setEnterThether(`${calculateTether(parseFloat(enterPrimium), marketInfo.currencyInfos[site]?.price)?.toFixed(2)}`);
                 setExitThether(`${calculateTether(parseFloat(exitPrimium), marketInfo.currencyInfos[site]?.price)?.toFixed(2)}`);
+                currentPrimium.current = calculatePrimium(domesticCoinInfo.buyPrice, overseaCoinInfo.sellPrice, marketInfo.currencyInfos[site]?.price)
+                currentThether.current = calculateTether(currentPrimium.current ?? 0, marketInfo.currencyInfos[site]?.price)
                 break;
             }
         }
@@ -353,12 +357,18 @@ const MarketDetail = () => {
                         <Table celled>
                             <Table.Body>
                                 <Table.Row>
+                                </Table.Row>
+                                <Table.Row>
+                                    <Table.Cell>실시간 김프</Table.Cell>
+                                    <Table.Cell>{currentPrimium.current?.toFixed(3)?.toLocaleString()}</Table.Cell>
                                     <Table.Cell>실시간 진입 김프</Table.Cell>
                                     <Table.Cell>{enterPrimium}</Table.Cell>
                                     <Table.Cell>실시간 탈출 김프</Table.Cell>
                                     <Table.Cell>{exitPrimium}</Table.Cell>
                                 </Table.Row>
                                 <Table.Row>
+                                    <Table.Cell>실시간 테더</Table.Cell>
+                                    <Table.Cell>{currentThether.current?.toFixed(3)?.toLocaleString()}</Table.Cell>
                                     <Table.Cell>실시간 진입 테더</Table.Cell>
                                     <Table.Cell>{enterThether}</Table.Cell>
                                     <Table.Cell>실시간 탈출 테더</Table.Cell>
@@ -459,11 +469,11 @@ const MarketDetail = () => {
                                                             <Divider />
                                                             <p>[국내] 자산: {Math.round(jobWorkerInfo.assetInfo?.balance_1 ?? 0).toLocaleString()}원 | 보유 코인: {jobWorkerInfo.assetInfo?.coinQty_1}{jobWorkerInfo.assetInfo?.symbol} | 수익: {jobWorkerInfo.assetInfo?.pnl_1.toLocaleString()}원</p>
                                                             <p>[해외] 자산: {jobWorkerInfo.assetInfo?.balance_2.toFixed(3).toLocaleString()}USDT | 마진 포지션: {jobWorkerInfo.assetInfo?.margin_2.toFixed(3).toLocaleString()}USDT | 수익: {jobWorkerInfo.assetInfo?.pnl_2.toFixed(3).toLocaleString()}USDT</p>
-                                                            <Divider />
-                                                            <p>총 자산: {Math.round((jobWorkerInfo.assetInfo?.balance_1 ?? 0) + ((jobWorkerInfo.assetInfo?.balance_2 ?? 0) * (jobWorkerInfo.assetInfo?.currencyPrice ?? 0)) 
-                                                            + ((jobWorkerInfo.assetInfo?.coinQty_1?? 0) * (jobWorkerInfo.assetInfo?.price_1 ?? 0)) + ((jobWorkerInfo.assetInfo?.margin_2?? 0) * (jobWorkerInfo.assetInfo?.currencyPrice ?? 0))
-                                                            + ((jobWorkerInfo.assetInfo?.margin_2?? 0) * (jobWorkerInfo.assetInfo?.currencyPrice ?? 0)) + (jobWorkerInfo.assetInfo?.pnl_2?? 0)).toLocaleString()}원 
-                                                            | 수익: {Math.round((jobWorkerInfo.assetInfo?.pnl_1?? 0) + ((jobWorkerInfo.assetInfo?.pnl_2 ?? 0) * (jobWorkerInfo.assetInfo?.currencyPrice ?? 0))).toLocaleString()}원</p>
+                                                            <Divider />                                                            
+                                                            <p>총 자산: {Math.round((jobWorkerInfo.assetInfo?.balance_1 ?? 0) + ((jobWorkerInfo.assetInfo?.balance_2 ?? 0) * (currentThether.current ?? 0)) 
+                                                            + ((jobWorkerInfo.assetInfo?.coinQty_1?? 0) * (jobWorkerInfo.assetInfo?.price_1 ?? 0)) + ((jobWorkerInfo.assetInfo?.margin_2?? 0) * (currentThether.current ?? 0))
+                                                            + ((jobWorkerInfo.assetInfo?.margin_2?? 0) * (currentThether.current ?? 0)) + (jobWorkerInfo.assetInfo?.pnl_2?? 0)).toLocaleString()}원 
+                                                            | 수익: {Math.round((jobWorkerInfo.assetInfo?.pnl_1?? 0) + ((jobWorkerInfo.assetInfo?.pnl_2 ?? 0) * (currentThether.current ?? 0))).toLocaleString()}원</p>
                                                         </div>
                                                         : <div></div>
                                                     }

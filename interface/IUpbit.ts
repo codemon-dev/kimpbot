@@ -1,5 +1,5 @@
 
-export interface IBinancePriceAmount {
+export interface IUpbitPriceAmount {
     price: string,
     amount: string,
 }
@@ -8,8 +8,8 @@ export interface IUpbitDeepth {
     symbol: string;
     timestamp: number;
     receivedAt: number;
-    bid: IBinancePriceAmount[];
-    ask: IBinancePriceAmount[];    
+    bid: IUpbitPriceAmount[];
+    ask: IUpbitPriceAmount[];    
 }
 
 export interface IUpbitTrade {
