@@ -12,7 +12,7 @@ export default class JobWokerDBApi {
     constructor(handlers: Handlers | undefined, _onload: any) {
         this.handlers = handlers;
         const filename = getDBFilePath(databaseName)
-        handlers?.logHandler?.log?.error(`JobWokerDBApi filename ${filename}`);
+        handlers?.logHandler?.log?.info(`JobWokerDBApi filename ${filename}`);
         const option: Nedb.DataStoreOptions = {
             filename: filename,
             autoload: true,

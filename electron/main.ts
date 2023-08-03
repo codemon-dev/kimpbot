@@ -91,3 +91,16 @@ app.on('activate', () => {
     createWindow()
   }
 })
+
+// Gracefully handle SIGINT and SIGTERM signals
+process.on('SIGINT', () => {
+  handlers?.logHandler?.log?.error(`[SIGINT] Received SIGINT signal. Shutting down gracefully...`)
+});
+
+process.on('SIGTERM', () => {
+  handlers?.logHandler?.log?.error(`[SIGTERM] Received SIGINT signal. Shutting down gracefully...`)
+});
+
+process.on('uncaughtException', (error) => {
+  handlers?.logHandler?.log?.error(`[uncaughtException] Received SIGINT signal. Shutting down gracefully...`)
+});

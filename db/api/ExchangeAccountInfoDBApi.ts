@@ -15,7 +15,7 @@ export default class ExchangeAccountInfoDBApi {
     constructor(handlers: Handlers | undefined, _onload: any) {
         handlers = handlers;
         const filename = getDBFilePath(databaseName)
-        handlers?.logHandler?.log?.error(`ExchangeAccountInfoDBApi filename ${filename}`);
+        handlers?.logHandler?.log?.info(`ExchangeAccountInfoDBApi filename ${filename}`);
         const option: Nedb.DataStoreOptions = {
             filename: filename,
             autoload: true,

@@ -175,7 +175,7 @@ const MarketDetail = () => {
         const jobConfig: JobConfig = {
             maxInputAmount: parseInt(evt.target[0].value) ?? 0,
             leverage: parseInt(evt.target[1].value) ?? 0,
-            splitTradeQty: parseFloat(evt.target[2].value) ?? 0.001,
+            numOfSplitTrade: parseFloat(evt.target[2].value) ?? 10,
             useCurrencyHedge: true,
             enterPriority: ENTER_PRIORITY.QTY,
         }
@@ -396,7 +396,7 @@ const MarketDetail = () => {
                                         onChange={onChange}
                                     />
                                     <Form.Input
-                                        label={`분할매수 수량(${overseaCoinInfo.symbol})`}
+                                        label={`분할매수 횟수`}
                                         name={`splitTradeQty`}
                                         type={"number"}
                                         step={"0.001"}
@@ -455,14 +455,14 @@ const MarketDetail = () => {
                             {   
                                 jobWorkers?.map((jobWorkerInfo: IJobWorkerInfo, index: number) => {
                                     return (
-                                        <Card key={`jobWorker_${jobWorkerInfo._id}`}  color={jobWorkerInfo.isStarted?"green": "orange"}>
+                                        <Card key={`jobWorker_${jobWorkerInfo._id}`} color={jobWorkerInfo.isStarted?"green": "red"}>
                                             <Card.Content>
-                                                <Card.Header>id: {jobWorkerInfo._id}</Card.Header>
-                                                <Card.Meta>isStarted: {jobWorkerInfo.isStarted === true? "true": "false"}</Card.Meta>
+                                                <Card.Header color={jobWorkerInfo.isStarted?"green": "red"}>id: {jobWorkerInfo._id}</Card.Header>
+                                                <Card.Meta color={jobWorkerInfo.isStarted?"green": "red"}>isStarted: {jobWorkerInfo.isStarted === true? "true": "false"}</Card.Meta>
                                                 <Card.Description>
                                                     <p>진입 설정 김프: {jobWorkerInfo.enterTargetPrimium}%, 탈출 설정 김프: {jobWorkerInfo.exitTargetPrimium}%</p>
                                                     <p>최대 진입 설정 금액: {jobWorkerInfo.config.maxInputAmount?.toLocaleString()}원</p>
-                                                    <p>레버리지: {jobWorkerInfo.config.leverage}배, 분할 매수 수량: {jobWorkerInfo.config.splitTradeQty}</p>
+                                                    <p>레버리지: {jobWorkerInfo.config.leverage}배, 분할 매수 횟수: {jobWorkerInfo.config.numOfSplitTrade}</p>
                                                     {
                                                         (jobWorkerInfo.assetInfo) ? 
                                                         <div>

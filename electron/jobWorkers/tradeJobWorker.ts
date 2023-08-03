@@ -12,9 +12,14 @@ import { AsyncLock } from '../../util/asyncLock';
 interface ISubProcessRet {
     isSuccess: boolean,
     tradeInfo_1: ITradeInfo | null,
-    tradeInfo_1_1?: ITradeInfo | null,
     tradeInfo_2: ITradeInfo | null,
     tradeInfo_cancel?: ITradeInfo | null,
+}
+
+interface IMinTradingInfo {
+    minNotation: number,
+    minQty: number,
+    minAmount: number,
 }
 
 export default class TradeJobWorker {
@@ -138,13 +143,42 @@ export default class TradeJobWorker {
         return enteredBalance;
     }
 
+    private calculatePriceWithFee = (price: number, feeRate: number, additionalRate?: number) => {
+        return price * (additionalRate ?? 1) * (1.0 + feeRate);
+    
+    }
+
     
 
-    private processEnter = async (exchangeCoinInfo1: IExchangeCoinInfo, exchangeCoinInfo2: IExchangeCoinInfo, coinInfo1: CoinInfo, coinInfo2: CoinInfo, currencyInfo: ICurrencyInfo) => {
+    private calculateMinTradingInfo = () => {
+        let minTradingInfo: IMinTradingInfo = {
+            minNotation: -1, minQty: -1, minAmount: -1
+        }
+        if (!this.exchangeCoinInfo1 || !this.exchangeCoinInfo2 || !this.coinInfo1 || !this.coinInfo2 || !this.currencyInfo) {
+            return minTradingInfo;
+        }
+        
+        const minNotation = Math.max(this.exchangeCoinInfo1.minNotional, this.exchangeCoinInfo2.minNotional * this.currencyInfo.price);
+        const minQty = Math.max(this.exchangeCoinInfo1.minQty, this.exchangeCoinInfo2.minQty)
+        const minNotationBuyAmount_1 = this.calculatePriceWithFee(minNotation, this.exchangeCoinInfo1.takerFee, PRICE_BUFFER_RATE)
+        const minNotationBuyAmount_2 = this.calculatePriceWithFee(minNotation, this.exchangeCoinInfo2.takerFee, PRICE_BUFFER_RATE)
+        const minQtyBuyAmount_1 = this.calculatePriceWithFee(minQty * this.coinInfo1.sellPrice, this.exchangeCoinInfo1.takerFee, PRICE_BUFFER_RATE)
+        const minQtyBuyAmount_2 = this.calculatePriceWithFee(minQty * this.coinInfo2.buyPrice, this.exchangeCoinInfo2.takerFee, PRICE_BUFFER_RATE) * this.currencyInfo.price
+        const minAmount = Math.max(minNotationBuyAmount_1, minNotationBuyAmount_2, minQtyBuyAmount_1, minQtyBuyAmount_2);
+        minTradingInfo.minNotation = minNotation;
+        minTradingInfo.minQty = minQty;
+        minTradingInfo.minAmount = minAmount;
+        // this.handlers?.logHandler?.log?.info(`[calculateMinTradingInfo] coinInfo1.sellPrice: ${this.coinInfo1.sellPrice} coinInfo2.buyPrice: ${this.coinInfo2.buyPrice}, currencyInfo: `, this.currencyInfo);
+        // this.handlers?.logHandler?.log?.info(`[calculateMinTradingInfo] minTradingInfo: `, minTradingInfo);
+        return minTradingInfo
+    }
+    
+
+    private processEnter = async (coinInfo1: CoinInfo, coinInfo2: CoinInfo, currencyInfo: ICurrencyInfo) => {
         if (this.enterCnt > 3) {
             return true;
         }
-        if (!exchangeCoinInfo1 || !exchangeCoinInfo2 
+        if (!this.exchangeCoinInfo1 || !this.exchangeCoinInfo2 
             || !coinInfo1 || !coinInfo2 || !currencyInfo
             || !coinInfo1.accountInfo || !coinInfo2.accountInfo) {
                 return true;
@@ -158,6 +192,7 @@ export default class TradeJobWorker {
         let avaliableBalance: number = Math.min(coinInfo1.accountInfo.avaliableBalance, exchange2Balance);
         let maxBalance: number = this.jobWorkerInfo.config.maxInputAmount - enteredBalance;
         avaliableBalance = Math.min(avaliableBalance, maxBalance);
+
         const avgSellPrice1 = getAvgPriceFromOrderBook(coinInfo1.orderBook.ask, avaliableBalance)
         const avgBuyPrice1 = getAvgPriceFromOrderBook(coinInfo1.orderBook.bid, avaliableBalance)
         const avgSellPrice2 = getAvgPriceFromOrderBook(coinInfo2.orderBook.ask, (avaliableBalance / currencyInfo.price))
@@ -168,81 +203,33 @@ export default class TradeJobWorker {
         }
         const curEnterPrimium = calculatePrimium(avgSellPrice1, avgBuyPrice2, currencyInfo.price);
 
-        if (curEnterPrimium <= this.jobWorkerInfo.enterTargetPrimium) {
-            // this.handlers?.logHandler?.log?.debug(`11111111cur EnterPrimium: ${curEnterPrimium}, this.jobWorkerInfo.enterTargetPrimium: ${this.jobWorkerInfo.enterTargetPrimium}`)
-
-            // // this.handlers?.logHandler?.log?.debug(`222222222: maxBalance: ${maxBalance}, enteredBalance: ${enteredBalance}, avaliableBalance: ${avaliableBalance}`)
-            // // 거래소1 최소 구매 금액 보다 큰지 확인 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            // if (avaliableBalance <= exchangeCoinInfo1.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee) * 4) {
-            //     // this.handlers?.logHandler?.log?.debug(`3333333333333: exchangeCoinInfo1.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee): ${exchangeCoinInfo1.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee)}`)
-            //     return true;
-            // }
-
-            // // 거래소2 최소 구매 금액 및 수량 보다 큰지 확인 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            // if (avaliableBalance <= exchangeCoinInfo2.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee) * currencyInfo.price * 4
-            // || avaliableBalance <= exchangeCoinInfo2.minQty * coinInfo2.buyPrice * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee) * currencyInfo.price) {
-            //     return true;
-            // }
-            // ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-            // if (avaliableBalance - ((exchangeCoinInfo2.minQty * (this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee)* currencyInfo.price)) - (exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee) * 3) < exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee)) {
-            //     return true;
-            // }
-
-            const minNotation_1 = 2 * exchangeCoinInfo1.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee);
-            const minNotation_2 = 2 * exchangeCoinInfo2.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee) * currencyInfo.price;
-            const minNotation = Math.max(minNotation_1, minNotation_2)
-
-            const minAmount_1 = ((3 * exchangeCoinInfo2.minQty) * ((this.coinInfo1?.sellPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee))) + minNotation
-            const minAmount_2 = ((3 * exchangeCoinInfo2.minQty) * ((this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee))) * currencyInfo.price + minNotation
-            
-            const finalMinNotation = Math.max(minAmount_1, minAmount_2);
-            // this.handlers?.logHandler?.log?.info(`[processEnter][a] minNotation_1: ${minNotation_1}, minNotation_2: ${minNotation_2}, minNotation: ${minNotation}`);
-            // this.handlers?.logHandler?.log?.info(`[processEnter][a] minAmount_1: ${minAmount_1}, minAmount_2: ${minAmount_2}`);
-            // this.handlers?.logHandler?.log?.info(`[processEnter][a] finalMinNotation: ${finalMinNotation}`);
-
-            if (coinInfo1.accountInfo.avaliableBalance < finalMinNotation || coinInfo2.accountInfo.avaliableBalance * coinInfo2.accountInfo.leverage * currencyInfo.price < finalMinNotation
-                || this.jobWorkerInfo.config.maxInputAmount < finalMinNotation) {
-                return true
+        if (curEnterPrimium <= this.jobWorkerInfo.enterTargetPrimium) {            
+            const minTradingInfo: IMinTradingInfo = this.calculateMinTradingInfo();
+            if (minTradingInfo.minAmount < 0 || minTradingInfo.minQty < 0 || minTradingInfo.minAmount < 0) {
+                this.handlers?.logHandler?.log?.error(`[processEnter] skip processEnter. minTradingInfo: `, minTradingInfo);
+                return false;
             }
-
-            let exchane1FakeTradePrice = Math.ceil(coinInfo1.price * 0.8);    // 20프로 아래 가격 매수
-            exchane1FakeTradePrice = convertExchangeOrederPrice(this.exchange1Handler?.exchange?? EXCHANGE.NONE, exchane1FakeTradePrice);
-            let exchane1FakeTradeQty = Math.ceil((exchangeCoinInfo1.minNotional / exchane1FakeTradePrice) * 1000000) / 1000000;    // 50프로 아래 가격
-            // this.handlers?.logHandler?.log?.debug("exchane1FakeTradePrice: ", exchane1FakeTradePrice)
-            // this.handlers?.logHandler?.log?.debug("exchane1FakeTradeVolume: ", exchane1FakeTradeQty)
-
-            let exchane2FakeTradePrice = Math.ceil(coinInfo2.price * 1.2);    // 20프로 위 가격 Shot
-            let exchane2FakeTradeQty = Math.max(exchangeCoinInfo2.minQty, exchangeCoinInfo2.minNotional / exchane2FakeTradePrice);                        
-            if (this.exchangeCoinInfo2?.quantityPrecision && this.exchangeCoinInfo2?.quantityPrecision >= 0) {
-                exchane2FakeTradeQty = roundUpToDecimalPlaces(exchane2FakeTradeQty, this.exchangeCoinInfo2?.quantityPrecision);
-            }
-            
-            if (avaliableBalance <= exchane1FakeTradePrice * (1.0 + (this.exchangeCoinInfo1?.takerFee ?? 0)) * exchane1FakeTradeQty
-            || avaliableBalance <= exchane2FakeTradePrice * (1.0 + (this.exchangeCoinInfo2?.takerFee ?? 0)) * exchane2FakeTradeQty) {
-                // this.handlers?.logHandler?.log?.debug(`555555555`)
+            if (avaliableBalance < (minTradingInfo.minAmount * 2) || this.jobWorkerInfo.config.maxInputAmount < (minTradingInfo.minAmount * 2)) {
                 return true;
             }
-
+            this.handlers?.logHandler?.log?.info(`[processEnter] minTradingInfo: `, minTradingInfo);
 
             // 현재 balance와 계산하고 있는 balance가 다르면 5초동안은 jopProcess skip 함.  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            const curAccountInfo1: ACCOUNT_INFO = await this.exchange1Handler?.fetchBalance();                
-            const curAccountInfo2: ACCOUNT_INFO = await this.exchange2Handler?.fetchBalance();
-
+            let promises: any = []
+            promises.push(this.exchange1Handler?.fetchBalance())
+            promises.push(this.exchange2Handler?.fetchBalance())
+            let promiseRet = await Promise.all(promises)
+            const curAccountInfo1: ACCOUNT_INFO = promiseRet[0];
+            const curAccountInfo2: ACCOUNT_INFO= promiseRet[1];
             if (await this.isSameAccountInfo(coinInfo1.accountInfo, curAccountInfo1) === false) {
                 this.handlers?.logHandler?.log?.error("AccountInfo1 is not same. skip process.")             
                 return false;
             }
-
-            // binance는 가겨에 따라 avaliableBalance가 계속 바뀌어서 사용 불가.
-            /* 
-            
-            if (await this.isSameAccountInfo(coinInfo2.accountInfo, curAccountInfo2) === false) {
-                this.handlers?.logHandler?.log?.error("AccountInfo2 is not same. skip process.")
-                return false;
-            }
-            */
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // binance는 가겨에 따라 avaliableBalance가 계속 바뀌어서 사용 불가.            
+            // if (await this.isSameAccountInfo(coinInfo2.accountInfo, curAccountInfo2) === false) {
+            //     this.handlers?.logHandler?.log?.error("AccountInfo2 is not same. skip process.")
+            //     return false;
+            // }
 
 
             // 테스트 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -254,23 +241,42 @@ export default class TradeJobWorker {
 
 
             // fake 거래로 거래 확인. ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////                
-            let promises: any = []
+            // Disable FakeTrade. TODO. biance fail to cancle ETH order
+            // // Fake Trade.
+            // let exchane1FakeTradePrice = Math.ceil(coinInfo1.price * 0.8);    // 20프로 아래 가격 매수
+            // exchane1FakeTradePrice = convertExchangeOrederPrice(this.exchange1Handler?.exchange?? EXCHANGE.NONE, exchane1FakeTradePrice);
+            // let exchane1FakeTradeQty = Math.ceil((exchangeCoinInfo1.minNotional / exchane1FakeTradePrice) * 1000000) / 1000000;    // 50프로 아래 가격
+            // // this.handlers?.logHandler?.log?.debug("exchane1FakeTradePrice: ", exchane1FakeTradePrice)
+            // // this.handlers?.logHandler?.log?.debug("exchane1FakeTradeVolume: ", exchane1FakeTradeQty)
+
+            // let exchane2FakeTradePrice = Math.ceil(coinInfo2.price * 1.2);    // 20프로 위 가격 Shot
+            // let exchane2FakeTradeQty = Math.max(exchangeCoinInfo2.minQty, exchangeCoinInfo2.minNotional / exchane2FakeTradePrice);                        
+            // if (this.exchangeCoinInfo2?.quantityPrecision && this.exchangeCoinInfo2?.quantityPrecision >= 0) {
+            //     exchane2FakeTradeQty = roundUpToDecimalPlaces(exchane2FakeTradeQty, this.exchangeCoinInfo2?.quantityPrecision);
+            // }
+            
+            // if (avaliableBalance <= exchane1FakeTradePrice * (1.0 + (this.exchangeCoinInfo1?.takerFee ?? 0)) * exchane1FakeTradeQty
+            // || avaliableBalance <= exchane2FakeTradePrice * (1.0 + (this.exchangeCoinInfo2?.takerFee ?? 0)) * exchane2FakeTradeQty) {
+            //     // this.handlers?.logHandler?.log?.debug(`555555555`)
+            //     return true;
+            // }
+
+            // let promises: any = []
             //국내 거래소는 굳이 fake test할필요 없음(이후 먼저 거래해보기때문에 실패하면 거기서 error 처리)
             //promises.push(this.exchange1Handler?.checkFakeTrade(ORDER_BID_ASK.BID, exchane1FakeTradeQty, exchane1FakeTradePrice));
-            promises.push(this.exchange2Handler?.checkFakeTrade(ORDER_BID_ASK.ASK, exchane2FakeTradeQty, exchane2FakeTradePrice));
-
-            let promisesRet = await Promise.all(promises);
-            for (const item of promisesRet) {
-                this.handlers?.logHandler?.log?.info(`checkFakeTrade. promisesRet: ${item}`)
-                if (item === false) {
-                    this.handlers?.logHandler?.log?.error("fail fakeTrade. skip processJobWorker")
-                    return false;
-                }
-            }
+            // promises.push(this.exchange2Handler?.checkFakeTrade(ORDER_BID_ASK.ASK, exchane2FakeTradeQty, exchane2FakeTradePrice));
+            // let promisesRet = await Promise.all(promises);
+            // for (const item of promisesRet) {
+            //     this.handlers?.logHandler?.log?.info(`checkFakeTrade. promisesRet: ${item}`)
+            //     if (item === false) {
+            //         this.handlers?.logHandler?.log?.error("fail fakeTrade. skip processJobWorker")
+            //         return false;
+            //     }
+            // }
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-            this.handlers?.logHandler?.log?.info("enterTargetPrimium is satisfied. start trade.");
-            const ret = await this.enterPosition(coinInfo1, coinInfo2, currencyInfo, exchangeCoinInfo1, exchangeCoinInfo2, avaliableBalance, curEnterPrimium);
+            this.handlers?.logHandler?.log?.info("enterTargetPrimium is satisfied. enterPosition.");
+            const ret = await this.enterPosition(avaliableBalance, minTradingInfo, curEnterPrimium);
             this.enterCnt++;
             if (!ret) {
                 this.handlers?.logHandler?.log?.info("Fail TO enterPosition!!!!!!!!!. ret: ", ret);
@@ -296,16 +302,16 @@ export default class TradeJobWorker {
         return true;
     }
 
-    private processExit = async (exchangeCoinInfo1: IExchangeCoinInfo, exchangeCoinInfo2: IExchangeCoinInfo, coinInfo1: CoinInfo, coinInfo2: CoinInfo, currencyInfo: ICurrencyInfo) => {
+    private processExit = async (coinInfo1: CoinInfo, coinInfo2: CoinInfo, currencyInfo: ICurrencyInfo) => {
         if (this.exitCnt > 3) {
             return true;
         }
-        if (!exchangeCoinInfo1 || !exchangeCoinInfo2 
+        if (!this.exchangeCoinInfo1 || !this.exchangeCoinInfo2 
             || !coinInfo1 || !coinInfo2 || !currencyInfo
             || !coinInfo1.accountInfo || !coinInfo2.accountInfo) {
                 return true;
         }
-
+        
         // 탈출 가능한지 check.
         if (this.jobWorkerInfo.tradeJobInfos.length <= 0) {
             return true;
@@ -332,32 +338,31 @@ export default class TradeJobWorker {
             }
             const curExitPrimium = calculatePrimium(avgBuyPrice1, avgSellPrice2, currencyInfo.price);
             const curThether: number = calculateTether(curExitPrimium, currencyInfo.price);
-            // this.handlers?.logHandler?.log?.debug(`curExitPrimium: ${curExitPrimium}, curThether: ${curThether}`);
-            if (tradeJobInfo.targetExitTheTher <= curThether) {
-                // 현재 balance와 계산하고 있는 balance가 다르면 5초동안은 jopProcess skip 함.  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                let exchane1FakeTradePrice = Math.ceil(coinInfo1.price * 1.2);    // 20프로 위 가격 매도
-                exchane1FakeTradePrice = convertExchangeOrederPrice(this.exchange1Handler?.exchange?? EXCHANGE.NONE, exchane1FakeTradePrice);
-                let exchane1FakeTradeQty = Math.ceil((exchangeCoinInfo1.minNotional / exchane1FakeTradePrice) * 1000000) / 1000000;    //20프로 아래 가격
-                // this.handlers?.logHandler?.log?.debug("exchane1FakeTradePrice: ", exchane1FakeTradePrice)
-                // this.handlers?.logHandler?.log?.debug("exchane1FakeTradeVolume: ", exchane1FakeTradeQty)
+            
+            if (tradeJobInfo.targetExitTheTher <= curThether) {                
+                this.handlers?.logHandler?.log?.debug(`curExitPrimium: ${curExitPrimium}, curThether: ${curThether}`);
+                // let exchane1FakeTradePrice = Math.ceil(coinInfo1.price * 1.2);    // 20프로 위 가격 매도
+                // exchane1FakeTradePrice = convertExchangeOrederPrice(this.exchange1Handler?.exchange?? EXCHANGE.NONE, exchane1FakeTradePrice);
+                // let exchane1FakeTradeQty = Math.ceil((this.exchangeCoinInfo1.minNotional / exchane1FakeTradePrice) * 1000000) / 1000000;    //20프로 아래 가격
+                // // this.handlers?.logHandler?.log?.debug("exchane1FakeTradePrice: ", exchane1FakeTradePrice)
+                // // this.handlers?.logHandler?.log?.debug("exchane1FakeTradeVolume: ", exchane1FakeTradeQty)
+                // let exchane2FakeTradePrice = Math.ceil(coinInfo2.price * 0.8);    // 20프로 아래 가격 long
+                // let exchane2FakeTradeQty = Math.max(this.exchangeCoinInfo2.minQty, this.exchangeCoinInfo2.minNotional / exchane2FakeTradePrice)
 
-                let exchane2FakeTradePrice = Math.ceil(coinInfo2.price * 0.8);    // 20프로 아래 가격 long
-                let exchane2FakeTradeQty = Math.max(exchangeCoinInfo2.minQty, exchangeCoinInfo2.minNotional / exchane2FakeTradePrice)
+                // // fake 거래로 거래 확인.                
+                // let promises: any = []
+                // //promises.push(this.exchange1Handler?.checkFakeTrade(ORDER_BID_ASK.ASK, exchane1FakeTradeQty, exchane1FakeTradePrice));
+                // promises.push(this.exchange2Handler?.checkFakeTrade(ORDER_BID_ASK.BID, exchane2FakeTradeQty, exchane2FakeTradePrice));
+                // let promisesRet = await Promise.all(promises);                
+                // for (const item of promisesRet) {
+                //     this.handlers?.logHandler?.log?.info(`checkFakeTrade. promisesRet: ${item}`)
+                //     if (item === false) {
+                //         this.handlers?.logHandler?.log?.error("fail fakeTrade. skip processJobWorker")
+                //         return false;
+                //     }
+                // }
 
-                // fake 거래로 거래 확인. ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////                
-                let promises: any = []
-                //promises.push(this.exchange1Handler?.checkFakeTrade(ORDER_BID_ASK.ASK, exchane1FakeTradeQty, exchane1FakeTradePrice));
-                promises.push(this.exchange2Handler?.checkFakeTrade(ORDER_BID_ASK.BID, exchane2FakeTradeQty, exchane2FakeTradePrice));
-                let promisesRet = await Promise.all(promises);                
-                for (const item of promisesRet) {
-                    this.handlers?.logHandler?.log?.info(`checkFakeTrade. promisesRet: ${item}`)
-                    if (item === false) {
-                        this.handlers?.logHandler?.log?.error("fail fakeTrade. skip processJobWorker")
-                        return false;
-                    }
-                }
-
-                // 현재 balance와 계산하고 있는 balance가 다르면 5초동안은 jopProcess skip 함.  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+                // 현재 balance와 계산하고 있는 balance가 다르면 5초동안은 jopProcess skip 함.
                 const curAccountInfo1: ACCOUNT_INFO = await this.exchange1Handler?.fetchBalance();                
                 const curAccountInfo2: ACCOUNT_INFO = await this.exchange2Handler?.fetchBalance();
 
@@ -365,9 +370,20 @@ export default class TradeJobWorker {
                     this.handlers?.logHandler?.log?.error("AccountInfo1 is not same. skip process.")                    
                     return false;
                 }
+
+                // binance는 가겨에 따라 avaliableBalance가 계속 바뀌어서 사용 불가.            
+                // if (await this.isSameAccountInfo(coinInfo2.accountInfo, curAccountInfo2) === false) {
+                //     this.handlers?.logHandler?.log?.error("AccountInfo2 is not same. skip process.")
+                //     return false;
+                // }
                 
-                this.handlers?.logHandler?.log?.info("exitTargetPrimium is satisfied. start trade.");
-                const ret = await this.exitPosition(tradeJobInfo, coinInfo1, coinInfo2, currencyInfo, curExitPrimium);
+                this.handlers?.logHandler?.log?.info("exitTargetPrimium is satisfied. start exitPosition.");
+                const minTradingInfo: IMinTradingInfo = this.calculateMinTradingInfo();
+                if (minTradingInfo.minAmount < 0 || minTradingInfo.minQty < 0 || minTradingInfo.minAmount < 0) {
+                    this.handlers?.logHandler?.log?.error(`[processExit] skip processEnter. minTradingInfo: `, minTradingInfo);
+                    return false;
+                }
+                const ret = await this.exitPosition(tradeJobInfo, minTradingInfo, curExitPrimium);
                 this.exitCnt++;
                 if (!ret) {
                     this.handlers?.logHandler?.log?.error("FAIL TO exitPosition!!!!!!!!!");
@@ -445,7 +461,7 @@ export default class TradeJobWorker {
                 this.handlers?.logHandler?.log?.info("start run processJobWorker again.")
             }
             this.isProcessWorking = true;
-            let ret1 = await this.processEnter(exchangeCoinInfo1, exchangeCoinInfo2, coinInfo1, coinInfo2, currencyInfo);
+            let ret1 = await this.processEnter(coinInfo1, coinInfo2, currencyInfo);
             if (ret1 === false) {
                 setTimeout(() => {
                     this.lock_processJobWoker.release();
@@ -458,7 +474,7 @@ export default class TradeJobWorker {
                 this.lock_processJobWoker?.release();
                 return;
             }
-            let ret2 = await this.processExit(exchangeCoinInfo1, exchangeCoinInfo2, coinInfo1, coinInfo2, currencyInfo);            
+            let ret2 = await this.processExit(coinInfo1, coinInfo2, currencyInfo);            
             if (ret2 === false) {
                 setTimeout(() => {
                     this.lock_processJobWoker?.release();
@@ -542,28 +558,33 @@ export default class TradeJobWorker {
         return true;
     }
 
-    private enterPosition = async (coinInfo1: CoinInfo, coinInfo2: CoinInfo, currencyInfo: ICurrencyInfo, exchangeCoinInfo1: IExchangeCoinInfo, exchangeCoinInfo2: IExchangeCoinInfo, amount: number, enterStartPrimium: number) => {
-        this.handlers?.logHandler?.log?.info("start enterPosition. amount: ", amount)
-        this.handlers?.logHandler?.log?.info("start enterPosition. enterStartPrimium: ", enterStartPrimium)        
-        this.handlers?.logHandler?.log?.info("start enterPosition. coinInfo1: ", coinInfo1)
-        this.handlers?.logHandler?.log?.info("start enterPosition. coinInfo2: ", coinInfo2)
-        this.handlers?.logHandler?.log?.info("start enterPosition. currencyInfo: ", currencyInfo)
-        this.handlers?.logHandler?.log?.info("start enterPosition. exchangeCoinInfo1: ", exchangeCoinInfo1)
-        this.handlers?.logHandler?.log?.info("start enterPosition. exchangeCoinInfo2: ", exchangeCoinInfo2)
+    private enterPosition = async (amount: number, minTradingInfo: IMinTradingInfo, enterStartPrimium: number) => {
+        let coinInfo1 = _.cloneDeep(this.coinInfo1)
+        let coinInfo2 = _.cloneDeep(this.coinInfo2)
+        let currencyInfo = _.cloneDeep(this.currencyInfo)
+        if (!this.exchangeCoinInfo1 || !this.exchangeCoinInfo2 || !coinInfo1 || !coinInfo2 || !coinInfo1.accountInfo || !coinInfo2.accountInfo || !currencyInfo || currencyInfo.price <= 0) {
+            this.handlers?.logHandler?.log?.error(`skip enterPosition. exchangeCoinInfo1: `, this.exchangeCoinInfo1);
+            this.handlers?.logHandler?.log?.error(`skip enterPosition. exchangeCoinInfo2: `, this.exchangeCoinInfo2);
+            this.handlers?.logHandler?.log?.error(`skip enterPosition. currencyInfo: `, currencyInfo);
+            this.handlers?.logHandler?.log?.error(`skip enterPosition. coinInfo1: `, coinInfo1);
+            this.handlers?.logHandler?.log?.error(`skip enterPosition. coinInfo2: `, coinInfo2);
+            return;
+        }
+        this.handlers?.logHandler?.log?.info(`start enterPosition. amount: ${amount}, minAmount: ${minTradingInfo.minAmount}, minQty: ${minTradingInfo.minQty}`)
+        this.handlers?.logHandler?.log?.info("start enterPosition. enterStartPrimium: ", enterStartPrimium)
+        this.handlers?.logHandler?.log?.info("start enterPosition. exchangeCoinInfo1: ", this.exchangeCoinInfo1)
+        this.handlers?.logHandler?.log?.info("start enterPosition. exchangeCoinInfo2: ", this.exchangeCoinInfo2)
 
-        this.handlers?.logHandler?.log?.info("start enterPosition. this.coinInfo1: ", this.coinInfo1)
-        this.handlers?.logHandler?.log?.info("start enterPosition. this.coinInfo2: ", this.coinInfo2)
-        this.handlers?.logHandler?.log?.info("start enterPosition. this.currencyInfo: ", this.currencyInfo)
-        this.handlers?.logHandler?.log?.info("start enterPosition. this.exchangeCoinInfo1: ", this.exchangeCoinInfo1)
-        this.handlers?.logHandler?.log?.info("start enterPosition. this.exchangeCoinInfo2: ", this.exchangeCoinInfo2)
-
-        const spiltAmount = this.jobWorkerInfo.config.splitTradeQty * coinInfo1.sellPrice;
+        let spiltAmount = amount / this.jobWorkerInfo.config.numOfSplitTrade;
+        
+        if (spiltAmount < minTradingInfo.minAmount) {
+            spiltAmount = minTradingInfo.minAmount;
+        }
         let remainedAmount = amount;
-        let remainedBalance_1 = coinInfo1?.accountInfo?.avaliableBalance ?? 0;
-        let remainedBalance_2 = (coinInfo2?.accountInfo?.avaliableBalance ?? 0) * (coinInfo2?.accountInfo?.leverage ?? 0);
+        let remainedBalance_1 = coinInfo1.accountInfo?.avaliableBalance;
+        let remainedBalance_2 = coinInfo2.accountInfo.avaliableBalance * coinInfo2.accountInfo.leverage;
         let isLastOrder = false;
 
-        //const enterStartPrimium = calculatePrimium(coinInfo1.sellPrice, coinInfo2.buyPrice, currencyInfo.price)
         const enterStartThether = calculateTether(enterStartPrimium, currencyInfo.price)
  
         let tradeJobInfo: ITradeJobInfo = {
@@ -574,7 +595,7 @@ export default class TradeJobWorker {
             symbol_1: this.jobWorkerInfo.symbol_1,
             symbol_2: this.jobWorkerInfo.symbol_2,
             leverage_1: 1,
-            leverage_2: coinInfo2?.accountInfo?.leverage ?? 1,
+            leverage_2: coinInfo2.accountInfo.leverage ?? 1,
             profit_1: 0,
             profit_2: 0,
             totalProfit: 0,
@@ -636,6 +657,8 @@ export default class TradeJobWorker {
             exitTradeInfo_1: [],
             enterTradeInfo_2: [],
             exitTradeInfo_2: [],
+            cancelEnterTradeInfo: [],
+            cancelExitTradeInfo: [],
         
             targetEnterPrimium: this.jobWorkerInfo.enterTargetPrimium,
             targetExitPrimium: this.jobWorkerInfo.exitTargetPrimium,
@@ -653,7 +676,7 @@ export default class TradeJobWorker {
             enteredThether: 0,
             exitedThether: 0,
 
-            enteredCurrencyPrice:  this.currencyInfo?.price ?? 0,
+            enteredCurrencyPrice:  currencyInfo.price,
             exitedCurrencyPrice: 0,
 
             enterCompleteType: COMPLETE_TYPE.NONE,
@@ -663,73 +686,51 @@ export default class TradeJobWorker {
             updatedAt: 0,
         }
 
+        let index = 0;
         while(true) {
-            // 최소구매금액 보다 작으면 break;
-            // this.handlers?.logHandler?.log?.debug("remainedBalance_1: ", remainedBalance_1)
-            // this.handlers?.logHandler?.log?.debug("remainedBalance_1111: ", 2 * exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee))
-            // this.handlers?.logHandler?.log?.debug("remainedBalance_2: ", remainedBalance_2)
-            // this.handlers?.logHandler?.log?.debug("remainedBalance_2222: ", 2 * exchangeCoinInfo2.minNotional * (1.0 + exchangeCoinInfo2.takerFee))
-            // this.handlers?.logHandler?.log?.debug("exchangeCoinInfo2.minQty: ", exchangeCoinInfo2.minQty)
-            // this.handlers?.logHandler?.log?.debug("exchangeCoinInfo2.minQty2222222222222: ", (remainedBalance_2 / (this.coinInfo2?.price ?? 0)))
-            
-            
-            
-            const minNotation_1 = 2 * exchangeCoinInfo1.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee);
-            const minNotation_2 = 2 * exchangeCoinInfo2.minNotional * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee) * currencyInfo.price;
-            const minNotation = Math.max(minNotation_1, minNotation_2)
-
-            const minAmount_1 = ((3 * exchangeCoinInfo2.minQty) * ((this.coinInfo1?.sellPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee))) + minNotation
-            const minAmount_2 = ((3 * exchangeCoinInfo2.minQty) * ((this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee))) * currencyInfo.price + minNotation
-            
-            const finalMinNotation = Math.max(minAmount_1, minAmount_2);
-            this.handlers?.logHandler?.log?.info(`[enterPosition][b] minNotation_1: ${minNotation_1}, minNotation_2: ${minNotation_2}, minNotation: ${minNotation}`);
-            this.handlers?.logHandler?.log?.info(`[enterPosition][b] minAmount_1: ${minAmount_1}, minAmount_2: ${minAmount_2}`);
-            this.handlers?.logHandler?.log?.info(`[enterPosition][b] finalMinNotation: ${finalMinNotation}`);
-
-            if (remainedBalance_1 < finalMinNotation || remainedBalance_2 * currencyInfo.price < finalMinNotation) {
+            // 최소구매금액 보다 작으면 break;            
+            this.handlers?.logHandler?.log?.info(`[enterPosition][spiltOrderIndex: ${index}] remainedAmount: ${remainedAmount} spiltAmount: ${spiltAmount}`);
+            this.handlers?.logHandler?.log?.info(`[enterPosition][spiltOrderIndex: ${index}] remainedBalance_1: ${remainedBalance_1}, remainedBalance_2: ${remainedBalance_2}`);
+            if (!this.currencyInfo || !this.coinInfo1 || !this.coinInfo2) {
                 break;
-            }
-            let orderAmount = 0;
-            const minOrderAmount_1 = 3 * exchangeCoinInfo2.minQty * ((this.coinInfo1?.sellPrice ?? 0) * PRICE_BUFFER_RATE) * (1.0 + exchangeCoinInfo1.takerFee) + minNotation;
-            const minOrderAmount_2 = 3 * exchangeCoinInfo2.minQty * ((this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE) * (1.0 + exchangeCoinInfo2.takerFee) * currencyInfo.price + minNotation;
-            let minOrderAmount = Math.max(minOrderAmount_1, minOrderAmount_2, spiltAmount);
-            minOrderAmount = Math.min(minOrderAmount, remainedAmount)
+            }            
 
-            if (remainedAmount < 2 * minOrderAmount) {
+            if (remainedBalance_1 < spiltAmount || (remainedBalance_2 * this.currencyInfo.price) < spiltAmount) {
+                break;
+            }            
+            
+            let orderAmount = 0;
+            if (remainedAmount < 2 * spiltAmount) {
                 orderAmount = remainedAmount;
                 isLastOrder = true;
             } else {
-                orderAmount = minOrderAmount;
+                orderAmount = spiltAmount;
                 isLastOrder = false;
             }
-            this.handlers?.logHandler?.log?.info(`spiltAmount: ${spiltAmount}, coinInfo2.buyPrice: ${this.coinInfo2?.buyPrice}, orderAmount: ${orderAmount}, minOrderAmount: ${minOrderAmount}`);
-
-            if (orderAmount < minOrderAmount) {
+            this.handlers?.logHandler?.log?.info(`[enterPosition][spiltOrderIndex: ${index}] orderAmount: ${orderAmount}, isLastOrder: ${isLastOrder}`);
+            const minNotaion_1 = Math.max(
+                this.calculatePriceWithFee(this.coinInfo1.sellPrice * minTradingInfo.minQty, this.exchangeCoinInfo1.takerFee, PRICE_BUFFER_RATE), 
+                this.calculatePriceWithFee(this.exchangeCoinInfo1.minNotional, this.exchangeCoinInfo1.takerFee, PRICE_BUFFER_RATE));
+            const minNotaion_2 = Math.max(
+                this.calculatePriceWithFee(this.coinInfo2.buyPrice * minTradingInfo.minQty, this.exchangeCoinInfo2.takerFee, PRICE_BUFFER_RATE), 
+                this.calculatePriceWithFee(this.exchangeCoinInfo2.minNotional, this.exchangeCoinInfo2.takerFee, PRICE_BUFFER_RATE)) * this.currencyInfo.price;
+            if (orderAmount < minTradingInfo.minAmount || orderAmount < minNotaion_1 || orderAmount < minNotaion_2) {
+                this.handlers?.logHandler?.log?.error(`[enterPosition][spiltOrderIndex: ${index}] stop enterPosition. this.currencyInfo.price: ${this.currencyInfo.price}, coinInfo1.sellPrice: ${coinInfo1.sellPrice}, coinInfo2.buyPrice: ${coinInfo2.buyPrice}`);
+                this.handlers?.logHandler?.log?.error(`[enterPosition][spiltOrderIndex: ${index}] stop enterPosition. orderAmount: ${orderAmount}, minAmount: ${minTradingInfo.minAmount}, minNotaion_1: ${minNotaion_1}, minNotaion_2: ${minNotaion_2}`);
                 break;
             }
-            if (!this.coinInfo1 || !this.coinInfo2) {
-                break;
-            }
-            // console.log("111: ", ((exchangeCoinInfo2.minQty * (this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee)* currencyInfo.price)) )
-            // console.log("222: ", (exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee) * 3) )
-            // console.log("333: ", exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee) )
-            // if (orderAmount - ((exchangeCoinInfo2.minQty * (this.coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee) * currencyInfo.price)) - (exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee) * 3) 
-            // < exchangeCoinInfo1.minNotional * (1.0 + exchangeCoinInfo1.takerFee)) {
-            //     break;
-            // }
-            let ret: any = await this.enterSubProcess(this.coinInfo1, this.coinInfo2, currencyInfo, exchangeCoinInfo1, exchangeCoinInfo2, orderAmount);
+            let ret: any = await this.enterSubProcess(orderAmount, minTradingInfo.minQty, index);
             const subProcessRet: ISubProcessRet | any = ret;
             if (ret) {
                 this.handlers?.logHandler?.log?.info("isSuccess: ", subProcessRet.isSuccess);
                 this.handlers?.logHandler?.log?.info("tradeInfo_1: ", subProcessRet.tradeInfo_1);
-                this.handlers?.logHandler?.log?.info("tradeInfo_1_1: ", subProcessRet.tradeInfo_1_1);
                 this.handlers?.logHandler?.log?.info("tradeInfo_2: ", subProcessRet.tradeInfo_2);
                 this.handlers?.logHandler?.log?.info("cancel_tradeInfo: ", subProcessRet.cancel_tradeInfo);
                 tradeJobInfo.enterTradeStatus.timestamp = Date.now();                
                 if (subProcessRet.isSuccess === true) {
-                    tradeJobInfo.enterTradeStatus.totalVolume_1 += ((subProcessRet.tradeInfo_1?.totalVolume ?? 0) + (subProcessRet.tradeInfo_1_1?.totalVolume ?? 0));
-                    tradeJobInfo.enterTradeStatus.totalQty_1 += ((subProcessRet.tradeInfo_1?.totalQty ?? 0) + (subProcessRet.tradeInfo_1_1?.totalQty ?? 0));
-                    tradeJobInfo.enterTradeStatus.totalFee_1 += ((subProcessRet.tradeInfo_1?.totalFee ?? 0) + (subProcessRet.tradeInfo_1_1?.totalFee ?? 0));
+                    tradeJobInfo.enterTradeStatus.totalVolume_1 += subProcessRet.tradeInfo_1?.totalVolume ?? 0;
+                    tradeJobInfo.enterTradeStatus.totalQty_1 += subProcessRet.tradeInfo_1?.totalQty ?? 0;
+                    tradeJobInfo.enterTradeStatus.totalFee_1 += subProcessRet.tradeInfo_1?.totalFee ?? 0;
                     tradeJobInfo.enterTradeStatus.avgPrice_1 = tradeJobInfo.enterTradeStatus.totalVolume_1 / tradeJobInfo.enterTradeStatus.totalQty_1;
         
                     tradeJobInfo.enterTradeStatus.totalVolume_2 += subProcessRet.tradeInfo_2?.totalVolume ?? 0;
@@ -737,9 +738,9 @@ export default class TradeJobWorker {
                     tradeJobInfo.enterTradeStatus.totalFee_2 += subProcessRet.tradeInfo_2?.totalFee ?? 0;
                     tradeJobInfo.enterTradeStatus.avgPrice_2 = tradeJobInfo.enterTradeStatus.totalVolume_2 / tradeJobInfo.enterTradeStatus.totalQty_2;
                 } else {
-                    tradeJobInfo.enterTradeStatus.totalVolume_fail = tradeJobInfo.enterTradeStatus.totalVolume_fail + (subProcessRet.tradeInfo_1?.totalVolume ?? 0) + (subProcessRet.tradeInfo_1_1?.totalVolume ?? 0);
-                    tradeJobInfo.enterTradeStatus.totalQty_fail += ((subProcessRet.tradeInfo_1?.totalQty ?? 0) + (subProcessRet.tradeInfo_1_1?.totalQty ?? 0));
-                    tradeJobInfo.enterTradeStatus.totalFee_fail += ((subProcessRet.tradeInfo_1?.totalFee ?? 0) + (subProcessRet.tradeInfo_1_1?.totalFee ?? 0));
+                    tradeJobInfo.enterTradeStatus.totalVolume_fail += subProcessRet.tradeInfo_1?.totalVolume;
+                    tradeJobInfo.enterTradeStatus.totalQty_fail += subProcessRet.tradeInfo_1?.totalQty ?? 0;
+                    tradeJobInfo.enterTradeStatus.totalFee_fail += ((subProcessRet.tradeInfo_1?.totalFee ?? 0) + (subProcessRet.tradeInfo_cancel?.totalFee ?? 0));
                     tradeJobInfo.enterTradeStatus.avgPrice_fail = tradeJobInfo.enterTradeStatus.totalVolume_fail / tradeJobInfo.enterTradeStatus.totalQty_fail;
 
                     tradeJobInfo.enterTradeStatus.totalVolume_cancel += subProcessRet.tradeInfo_cancel?.totalVolume ?? 0;
@@ -751,26 +752,24 @@ export default class TradeJobWorker {
                 if (subProcessRet.tradeInfo_1) {
                     tradeJobInfo.enterTradeInfo_1.push(subProcessRet.tradeInfo_1);
                 }
-                if (subProcessRet.tradeInfo_1_1) {
-                    tradeJobInfo.enterTradeInfo_1.push(subProcessRet.tradeInfo_1_1);
-                }
-                if (subProcessRet.cancel_tradeInfo) {
-                    tradeJobInfo.enterTradeInfo_1.push(subProcessRet.cancel_tradeInfo);
-                }
                 if (subProcessRet.tradeInfo_2) {
                     tradeJobInfo.enterTradeInfo_2.push(subProcessRet.tradeInfo_2);
+                }
+                if (subProcessRet.cancel_tradeInfo) {
+                    tradeJobInfo.cancelEnterTradeInfo.push(subProcessRet.cancel_tradeInfo);
                 }                
             } else {
-                this.handlers?.logHandler?.log?.info("FAIL TO enterSubProcess");
+                this.handlers?.logHandler?.log?.error(`[enterPosition][spiltOrderIndex: ${index}] FAIL TO enterSubProcess.`);
                 break;
             }
 
             if (isLastOrder === true || subProcessRet?.isSuccess === false) {
                 break;
             }
-            remainedAmount = remainedAmount - (remainedBalance_1 - subProcessRet.tradeInfo_1_1.remainedBalance);
-            remainedBalance_1 = subProcessRet.tradeInfo_1_1.remainedBalance;
-            remainedBalance_2 = subProcessRet.tradeInfo_2.remainedBalance * (coinInfo2?.accountInfo?.leverage ?? 0);
+            remainedAmount = remainedAmount - (tradeJobInfo.enterTradeStatus.totalVolume_1 + tradeJobInfo.enterTradeStatus.totalFee_1);
+            remainedBalance_1 = subProcessRet.tradeInfo_1.avaliableBalance;
+            remainedBalance_2 = subProcessRet.tradeInfo_2.avaliableBalance * coinInfo2.accountInfo.leverage;
+            index++;
         }
 
         tradeJobInfo.enteredPrimium = (tradeJobInfo.enterTradeStatus.avgPrice_1 === 0 || tradeJobInfo.enterTradeStatus.avgPrice_2 === 0)? 0: calculatePrimium(tradeJobInfo.enterTradeStatus.avgPrice_1, tradeJobInfo.enterTradeStatus.avgPrice_2, currencyInfo.price);
@@ -778,10 +777,11 @@ export default class TradeJobWorker {
 
         if (tradeJobInfo.enterTradeStatus.totalQty_1 === 0 && tradeJobInfo.enterTradeStatus.totalQty_2 === 0
             && tradeJobInfo.enterTradeStatus.totalQty_fail === 0 && tradeJobInfo.enterTradeStatus.totalQty_cancel === 0) {
+                this.handlers?.logHandler?.log?.error(`[enterPosition][spiltOrderIndex: ${index}] there was no trade`);
                 return null;
         }
         
-        if (tradeJobInfo.enterTradeStatus.totalQty_fail === 0 && tradeJobInfo.enterTradeStatus.totalQty_cancel === 0
+        if ((tradeJobInfo.enterTradeStatus.totalQty_fail === 0 && tradeJobInfo.enterTradeStatus.totalQty_cancel === 0)
             || tradeJobInfo.enterTradeStatus.totalQty_fail > 0 && tradeJobInfo.enterTradeStatus.totalQty_fail === tradeJobInfo.enterTradeStatus.totalQty_cancel) {
             tradeJobInfo.enterCompleteType = COMPLETE_TYPE.SUCCESS;
             tradeJobInfo.targetExitTheTher = tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01));
@@ -793,80 +793,57 @@ export default class TradeJobWorker {
         return tradeJobInfo;
     }
 
-    private enterSubProcess = (coinInfo1: CoinInfo, coinInfo2: CoinInfo, currencyInfo: ICurrencyInfo, exchangeCoinInfo1: IExchangeCoinInfo, exchangeCoinInfo2: IExchangeCoinInfo, amount: number) => {
-        this.handlers?.logHandler?.log?.info("start enterSubProcess. ");
+    private calculateAmountWithoutFee = (amount: number, fee: number) => {
+        return amount / (1.0 + fee);
+    }
+
+    private enterSubProcess = (amount: number, minQty: number, index: number) => {
+        this.handlers?.logHandler?.log?.info(`[enterSubProcess][spiltOrderIndex: ${index}] start enterSubProcess. amount: ${amount}, minQty: ${minQty}`);        
         return new Promise(async (resolve) => {
+            if (!this.exchangeCoinInfo1 || !this.exchangeCoinInfo2 || !this.coinInfo1 || !this.coinInfo2 || !this.currencyInfo) {
+                this.handlers?.logHandler?.log?.error(`[enterSubProcess][spiltOrderIndex: ${index}] skip enterSubProcess.`);
+                this.handlers?.logHandler?.log?.error(`[enterSubProcess][spiltOrderIndex: ${index}] exchangeCoinInfo1: `, this.exchangeCoinInfo1);
+                this.handlers?.logHandler?.log?.error(`[enterSubProcess][spiltOrderIndex: ${index}] exchangeCoinInfo2: `, this.exchangeCoinInfo2);
+                this.handlers?.logHandler?.log?.error(`[enterSubProcess][spiltOrderIndex: ${index}] coinInfo1: `, this.coinInfo1);
+                this.handlers?.logHandler?.log?.error(`[enterSubProcess][spiltOrderIndex: ${index}] coinInfo2: `, this.coinInfo2);
+                this.handlers?.logHandler?.log?.error(`[enterSubProcess][spiltOrderIndex: ${index}] currencyInfo: `, this.currencyInfo);
+                resolve(null)
+                return;
+            }
             let ret: ISubProcessRet = {
                 isSuccess: false,
                 tradeInfo_1: null, 
-                tradeInfo_1_1: null, 
                 tradeInfo_2: null,
                 tradeInfo_cancel: null,
             }
-            const firstOrderAmount = amount - (exchangeCoinInfo2.minQty * (coinInfo1?.sellPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee)) - ((exchangeCoinInfo1.minNotional * 2) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee));
-            
-            // const firstOrderAmount = amount - ((exchangeCoinInfo2.minQty * (coinInfo2?.buyPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo2.takerFee)* currencyInfo.price));
-            let firstOrderAmoutWithoutFee = firstOrderAmount / (1.0 + exchangeCoinInfo1.takerFee);
-            this.handlers?.logHandler?.log?.info(`amount: ${amount}`);
-            this.handlers?.logHandler?.log?.info(`(exchangeCoinInfo2.minQty * (coinInfo1?.sellPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee)): ${(exchangeCoinInfo2.minQty * (coinInfo1?.sellPrice ?? 0) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee))}, `);
-            this.handlers?.logHandler?.log?.info(`((exchangeCoinInfo1.minNotional * 2) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee)): ${((exchangeCoinInfo1.minNotional * 2) * PRICE_BUFFER_RATE * (1.0 + exchangeCoinInfo1.takerFee))}`);
-            this.handlers?.logHandler?.log?.info(`firstOrderAmount: ${firstOrderAmount}, firstOrderAmoutWithoutFee: ${firstOrderAmoutWithoutFee}`);
-            if (firstOrderAmoutWithoutFee <= 0 || firstOrderAmoutWithoutFee <= exchangeCoinInfo1.minNotional) {
+
+            const coinInfo1 = _.cloneDeep(this.coinInfo1);
+            let amountWithoutFee = this.calculateAmountWithoutFee(amount, this.exchangeCoinInfo1.takerFee)
+            let orderPirce = convertExchangeOrederPrice(this.exchange1Handler?.exchange ?? EXCHANGE.NONE, coinInfo1.sellPrice * PRICE_BUFFER_RATE)            
+            let volume = amountWithoutFee / (coinInfo1.sellPrice * PRICE_BUFFER_RATE);
+            volume = minQty * Math.floor(volume / minQty)
+            if (volume === 0) {
+                this.handlers?.logHandler?.log?.error(`[enterSubProcess][spiltOrderIndex: ${index}] skip enterSubProcess. volume is 0`)
                 resolve(null);
                 return;
             }
-            let res_1 = await this.exchange1Handler?.orderMarketBuy(-1, firstOrderAmoutWithoutFee, this.jobWorkerInfo._id);
+            let res_1 = await this.exchange1Handler?.orderMarketBuy(volume, orderPirce, this.jobWorkerInfo._id);
             if (!res_1) {
-                this.handlers?.logHandler?.log?.error("Fail to exchange_1 orderMarketBuy.")
+                this.handlers?.logHandler?.log?.error(`[enterSubProcess][spiltOrderIndex: ${index}] Fail to exchange_1 orderMarketBuy.`)
                 resolve(null);
                 return;
             }
             let tradeInfo_1: ITradeInfo = res_1 as ITradeInfo;
-            this.handlers?.logHandler?.log?.info("[enterSubProcess] tradeInfo_1: ", tradeInfo_1);
-            let remainedQty = exchangeCoinInfo2.minQty - (tradeInfo_1.totalQty % exchangeCoinInfo2.minQty);            
-            let orderPirce = convertExchangeOrederPrice(this.exchange1Handler?.exchange ?? EXCHANGE.NONE, coinInfo1.sellPrice * PRICE_BUFFER_RATE);
-            let qty = (Math.floor(((exchangeCoinInfo1.minNotional * 2) / orderPirce) / exchangeCoinInfo2.minQty) + 1) * exchangeCoinInfo2.minQty
-            remainedQty += parseFloat(qty.toFixed(exchangeCoinInfo1.quantityPrecision))
-
-            let res_1_1 = await this.exchange1Handler?.orderMarketBuy(remainedQty, orderPirce, this.jobWorkerInfo._id);
-            let tradeInfo_1_1: ITradeInfo = res_1_1 as ITradeInfo;
-            if (!res_1_1) {                
-                this.handlers?.logHandler?.log?.error("Fail to exchange_1 second orderMarketBuy.")
-                let res_cancle = await this.exchange1Handler?.orderMarketSell(tradeInfo_1.totalQty, this.jobWorkerInfo._id);
-                if (!res_cancle) {
-                    this.handlers?.logHandler?.log?.error("Fail to cancle exchange_1 orderMarketSell.")
-                    ret = {
-                        isSuccess: false,
-                        tradeInfo_1, 
-                        tradeInfo_1_1: null, 
-                        tradeInfo_2: null,
-                        tradeInfo_cancel: null,
-                    }
-                } else {
-                    ret = {
-                        isSuccess: false,
-                        tradeInfo_1, 
-                        tradeInfo_1_1, 
-                        tradeInfo_2: null,
-                        tradeInfo_cancel: res_cancle as ITradeInfo,
-                    }
-                }
-                resolve(ret);
-                return;
-            }
-            this.handlers?.logHandler?.log?.info("first tradeInfo_1_1: ", tradeInfo_1_1);
-            this.handlers?.logHandler?.log?.info(`tradeInfo_1.totalQty: ${tradeInfo_1.totalQty}, tradeInfo_1_1.totalQty: ${tradeInfo_1_1.totalQty}, exchangeCoinInfo2.quantityPrecisio: ${exchangeCoinInfo2.quantityPrecision}`);
-            this.handlers?.logHandler?.log?.info(`tradeInfo_1.totalQty + tradeInfo_1_1.totalQty: ${tradeInfo_1.totalQty + tradeInfo_1_1.totalQty}`);
-            const res_2 = await this.exchange2Handler?.orderMarketSell(tradeInfo_1.totalQty + tradeInfo_1_1.totalQty, this.jobWorkerInfo._id);
+            this.handlers?.logHandler?.log?.info(`[enterSubProcess][spiltOrderIndex: ${index}] tradeInfo_1: `, tradeInfo_1);
+            const res_2 = await this.exchange2Handler?.orderMarketSell(volume, this.jobWorkerInfo._id);
             if (!res_2) {
-                this.handlers?.logHandler?.log?.error("Fail to exchange_2 orderMarketSell.")
-                const res_cancle = await this.exchange1Handler?.orderMarketSell(tradeInfo_1.totalQty + tradeInfo_1_1.totalQty, this.jobWorkerInfo._id);
+                this.handlers?.logHandler?.log?.error(`[enterSubProcess][spiltOrderIndex: ${index}] Fail to exchange_2 orderMarketSell`);
+                const res_cancle = await this.exchange1Handler?.orderMarketSell(volume, this.jobWorkerInfo._id);
                 if (!res_cancle) {
-                    this.handlers?.logHandler?.log?.error("Fail to cancle exchange_1 orderMarketSell.")
+                    this.handlers?.logHandler?.log?.error("[enterSubProcess][spiltOrderIndex: ${index}] Fail to cancle exchange_1 orderMarketSell.")
                     ret = {
                         isSuccess: false,
                         tradeInfo_1, 
-                        tradeInfo_1_1, 
                         tradeInfo_2: null,
                         tradeInfo_cancel: null,
                     }
@@ -874,7 +851,6 @@ export default class TradeJobWorker {
                     ret = {
                         isSuccess: false,
                         tradeInfo_1, 
-                        tradeInfo_1_1, 
                         tradeInfo_2: null,
                         tradeInfo_cancel: res_cancle as ITradeInfo,
                     }
@@ -883,11 +859,10 @@ export default class TradeJobWorker {
                 return;
             }
             let tradeInfo_2: ITradeInfo = res_2 as ITradeInfo;
-            this.handlers?.logHandler?.log?.info("tradeInfo_2: ", tradeInfo_2);
+            this.handlers?.logHandler?.log?.info("[enterSubProcess][spiltOrderIndex: ${index}] tradeInfo_2: ", tradeInfo_2);
             ret = {
                 isSuccess: true,
                 tradeInfo_1, 
-                tradeInfo_1_1, 
                 tradeInfo_2,
                 tradeInfo_cancel: null,
             }
@@ -895,31 +870,42 @@ export default class TradeJobWorker {
         });
     }
 
-    private exitPosition = async (tradeJobInfo: ITradeJobInfo, coinInfo1: CoinInfo, coinInfo2: CoinInfo, currencyInfo: ICurrencyInfo, exitStartPrimium: number) => {
+    private exitPosition = async (tradeJobInfo: ITradeJobInfo, minTradingInfo: IMinTradingInfo, exitStartPrimium: number) => {
         this.handlers?.logHandler?.log?.info("start exitPosition. tradeJobInfo: ", tradeJobInfo)
         this.handlers?.logHandler?.log?.info("start exitPosition. exitStartPrimium: ", exitStartPrimium)
-        
-        this.handlers?.logHandler?.log?.info("start exitPosition. coinInfo1: ", coinInfo1)
-        this.handlers?.logHandler?.log?.info("start exitPosition. coinInfo2: ", coinInfo2)        
-        this.handlers?.logHandler?.log?.info("start exitPosition. currencyInfo: ", currencyInfo)
-
         this.handlers?.logHandler?.log?.info("start exitPosition. this.coinInfo1: ", this.coinInfo1)
         this.handlers?.logHandler?.log?.info("start exitPosition. this.coinInfo2: ", this.coinInfo2)
         this.handlers?.logHandler?.log?.info("start exitPosition. this.currencyInfo: ", this.currencyInfo)
 
-        let remainedQty = tradeJobInfo.enterTradeStatus.totalQty_1;
-        // let minQty = (this.exchangeCoinInfo2?.minQty ?? 0);
-        let minQty = (this.exchangeCoinInfo2?.minQty ?? 0) + (Math.floor((this.exchangeCoinInfo2?.minNotional ?? 0) / (this.coinInfo2?.sellPrice ?? 0)) / (this.exchangeCoinInfo2?.minQty ?? 0))
-        if (minQty === 0 || remainedQty < minQty) {
-            this.handlers?.logHandler?.log?.error(`exitPosition is something wrong: minQty: ${minQty}, remainedQty: ${remainedQty}, minQty: ${minQty}, minNotional: ${this.exchangeCoinInfo2?.minNotional}, sellPrice: ${this.coinInfo2?.sellPrice}`);
+        if (!this.exchangeCoinInfo1 || !this.exchangeCoinInfo2 || !this.coinInfo1 || !this.coinInfo2 || !this.currencyInfo || this.currencyInfo.price <= 0) {
+            this.handlers?.logHandler?.log?.error(`skip enterPosition. exchangeCoinInfo1: `, this.exchangeCoinInfo1);
+            this.handlers?.logHandler?.log?.error(`skip enterPosition. exchangeCoinInfo2: `, this.exchangeCoinInfo2);
+            this.handlers?.logHandler?.log?.error(`skip enterPosition. currencyInfo: `, this.currencyInfo);
+            this.handlers?.logHandler?.log?.error(`skip enterPosition. coinInfo1: `, this.coinInfo1);
+            this.handlers?.logHandler?.log?.error(`skip enterPosition. coinInfo2: `, this.coinInfo2);
             return;
         }
-        while(remainedQty >= minQty) {            
-            let qty = Math.min(remainedQty, this.jobWorkerInfo.config.splitTradeQty);
-            if (remainedQty < minQty * 2) {
-                qty = remainedQty   
+
+        const currencyPrice = this.currencyInfo.price;
+        let remainedQty_1 = tradeJobInfo.enterTradeStatus.totalQty_1;
+        let remainedQty_2 = tradeJobInfo.enterTradeStatus.totalQty_2;
+        if (remainedQty_1 < minTradingInfo.minQty || remainedQty_2 < minTradingInfo.minQty) {
+            this.handlers?.logHandler?.log?.error(`exitPosition is something wrong: minQty: ${minTradingInfo.minQty}, remainedQty_1: ${remainedQty_1}, remainedQty_2: ${remainedQty_2}`);
+            return;
+        }
+        let index = 0;
+        let spiltQty_1 = Math.max(remainedQty_1 / this.jobWorkerInfo.config.numOfSplitTrade, minTradingInfo.minQty);
+        let spiltQty_2 = Math.max(remainedQty_2 / this.jobWorkerInfo.config.numOfSplitTrade, minTradingInfo.minQty);
+        while(true) {
+            let qty_1= spiltQty_1;
+            let qty_2= spiltQty_2;
+            if (remainedQty_1 < spiltQty_1 * 2) {
+                qty_1 = remainedQty_1   
             }
-            let ret: any = await this.exitSubProcess(qty)
+            if (remainedQty_2 < spiltQty_2 * 2) {
+                qty_2 = remainedQty_2
+            }
+            let ret: any = await this.exitSubProcess(qty_1, qty_2, index)
             const subProcessRet: ISubProcessRet | any = ret;
             if (ret) {
                 this.handlers?.logHandler?.log?.info("isSuccess: ", subProcessRet.isSuccess);
@@ -950,15 +936,19 @@ export default class TradeJobWorker {
                 this.handlers?.logHandler?.log?.info("FAIL TO exitSubProcess");
                 break;
             }
-            remainedQty -= qty
+            remainedQty_1 -= qty_1;
+            remainedQty_2 -= qty_2;
+            if (remainedQty_1 < spiltQty_1 || remainedQty_2 < spiltQty_2) {
+                break;
+            }
         }
         tradeJobInfo.exitCompleteType = tradeJobInfo.exitCompleteType === COMPLETE_TYPE.FAIL? COMPLETE_TYPE.FAIL: COMPLETE_TYPE.SUCCESS;        
         if (tradeJobInfo.exitCompleteType === COMPLETE_TYPE.SUCCESS) {
-            tradeJobInfo.exitedCurrencyPrice = currencyInfo.price;
+            tradeJobInfo.exitedCurrencyPrice = currencyPrice;
             tradeJobInfo.exitStartPrimium = exitStartPrimium;
-            tradeJobInfo.exitedPrimium = calculatePrimium(tradeJobInfo.exitTradeStatus.avgPrice_1, tradeJobInfo.exitTradeStatus.avgPrice_2, currencyInfo.price);
-            tradeJobInfo.exitStartThether = calculateTether(tradeJobInfo.exitStartPrimium, currencyInfo.price);
-            tradeJobInfo.exitedThether = calculateTether(tradeJobInfo.exitedPrimium, currencyInfo.price);
+            tradeJobInfo.exitedPrimium = calculatePrimium(tradeJobInfo.exitTradeStatus.avgPrice_1, tradeJobInfo.exitTradeStatus.avgPrice_2, currencyPrice);
+            tradeJobInfo.exitStartThether = calculateTether(tradeJobInfo.exitStartPrimium, currencyPrice);
+            tradeJobInfo.exitedThether = calculateTether(tradeJobInfo.exitedPrimium, currencyPrice);
             tradeJobInfo.fee_1 = (tradeJobInfo.enterTradeStatus.totalFee_1 + tradeJobInfo.enterTradeStatus.totalFee_cancel + tradeJobInfo.enterTradeStatus.totalFee_fail) + (tradeJobInfo.exitTradeStatus.totalFee_1 + tradeJobInfo.exitTradeStatus.totalFee_cancel + tradeJobInfo.exitTradeStatus.totalFee_fail);
             tradeJobInfo.fee_2 = (tradeJobInfo.enterTradeStatus.totalFee_2 + tradeJobInfo.exitTradeStatus.totalFee_2) * tradeJobInfo.exitedThether;
             tradeJobInfo.totalFee = tradeJobInfo.fee_1 + tradeJobInfo.fee_2;
@@ -973,26 +963,26 @@ export default class TradeJobWorker {
         return tradeJobInfo;
     }
 
-    private exitSubProcess = (qty: number) => {
+    private exitSubProcess = (qty_1: number, qty_2: number, index: number) => {
         return new Promise(async (resolve) => {
-            this.handlers?.logHandler?.log?.info(`exitPosition. qty: ${qty}`)
+            this.handlers?.logHandler?.log?.info(`[exitSubProcess][exitSubProcess index: ${index}] exitPosition. qty_1: ${qty_1}, qty_2: ${qty_2}`)
             
             let ret: ISubProcessRet = {
                 isSuccess: false,
                 tradeInfo_1: null, 
                 tradeInfo_2: null,
             }
-            let res_1 = await this.exchange1Handler?.orderMarketSell(qty, this.jobWorkerInfo._id);
+            let res_1 = await this.exchange1Handler?.orderMarketSell(qty_1, this.jobWorkerInfo._id);
             if (!res_1) {
-                this.handlers?.logHandler?.log?.error("Fail to exchange_1 orderMarketSell.")
+                this.handlers?.logHandler?.log?.error(`[exitSubProcess][exitSubProcess index: ${index}]Fail to exchange_1 orderMarketSell.`)
                 resolve(null);
                 return;
             }
             let tradeInfo_1: ITradeInfo = res_1 as ITradeInfo;
-            this.handlers?.logHandler?.log?.info("[exitSubProcess] tradeInfo_1: ", tradeInfo_1);            
-            let res_2 = await this.exchange2Handler?.orderMarketBuy(qty, -1, this.jobWorkerInfo._id);
+            this.handlers?.logHandler?.log?.info(`[exitSubProcess][exitSubProcess index: ${index}]tradeInfo_1: `, tradeInfo_1);            
+            let res_2 = await this.exchange2Handler?.orderMarketBuy(qty_2, -1, this.jobWorkerInfo._id);
             if (!res_2) {
-                this.handlers?.logHandler?.log?.error("Fail to exchange_2 orderMarketBuy.")
+                this.handlers?.logHandler?.log?.error(`[exitSubProcess][exitSubProcess index: ${index}] Fail to exchange_2 orderMarketBuy.`)
                 ret = {
                     isSuccess: false,
                     tradeInfo_1, 
@@ -1002,13 +992,14 @@ export default class TradeJobWorker {
                 return;
             }
             let tradeInfo_2: ITradeInfo = res_2 as ITradeInfo;
-            this.handlers?.logHandler?.log?.info("[exitSubProcess] tradeInfo_2: ", tradeInfo_2);
+            this.handlers?.logHandler?.log?.info(`[exitSubProcess][exitSubProcess index: ${index}]tradeInfo_2: `, tradeInfo_2);
             ret = {
                 isSuccess: res_1 && res_2? true: false,
                 tradeInfo_1, 
                 tradeInfo_2,
             }
             resolve(ret);
+            return;
         })
     }
 

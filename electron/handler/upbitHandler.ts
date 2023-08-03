@@ -161,9 +161,9 @@ export default class UpbitHandler {
                 orderRet = await this.order(this.coinPairs[0], ORDER_BID_ASK.BID, UPBIT_ORDER_TYPE.MARKET_BUY, -1, price);
             }
             const orderTimestamp = Date.now();
-            this.handlers?.logHandler?.log?.info(`[UPBIT][ORDER][MARKET_BUY] volume: ${volume}, orderRet: `, orderRet);
+            this.handlers?.logHandler?.log?.info(`[UPBIT][ORDER][MARKET_BUY] volume: ${volume}, price: ${price}, orderRet: `, orderRet);
             if (!orderRet) {
-                this.handlers?.logHandler?.log?.error(`[UPBIT][ORDER][MARKET_BUY][FAIL] volume: ${volume}, orderRet: `, orderRet);
+                this.handlers?.logHandler?.log?.error(`[UPBIT][ORDER][MARKET_BUY][FAIL] volume: ${volume}, price: ${price}, orderRet: `, orderRet);
                 resolve(null);
                 return;
             }
@@ -204,7 +204,7 @@ export default class UpbitHandler {
                         totalQty: qty,
                         totalFee: parseFloat(orderRes.paid_fee),
                         orderInfos: [...orderInfos],
-                        remainedBalance: accountInfo?.avaliableBalance ?? 0,
+                        avaliableBalance: accountInfo?.avaliableBalance ?? 0,
                         createdAt: orderTimestamp,
                         updatedAt: orderTimestamp,
                     }
@@ -270,7 +270,7 @@ export default class UpbitHandler {
                         totalQty: qty,
                         totalFee: parseFloat(orderRes.paid_fee),
                         orderInfos: {...orderInfos},
-                        remainedBalance: accountInfo?.avaliableBalance ?? 0,
+                        avaliableBalance: accountInfo?.avaliableBalance ?? 0,
                         createdAt: orderTimestamp,
                         updatedAt: orderTimestamp,
                     }

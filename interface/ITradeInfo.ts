@@ -49,7 +49,7 @@ export interface ITradeInfo {
 
     orderInfos: IOrderInfo[],
 
-    remainedBalance: number,
+    avaliableBalance: number,
     createdAt: number,
     updatedAt: number,
 }
@@ -65,7 +65,7 @@ export interface ITradeStatus {
     totalQty_2: number,
     totalFee_2: number,
 
-    // 취소해야할 성공한 trade
+    // 거래소 1에서만 성공한 trade 거래소 2는 실패
     avgPrice_fail: number,
     totalVolume_fail: number,
     totalQty_fail: number,
@@ -94,8 +94,11 @@ export interface ITradeJobInfo {
 
     enterTradeInfo_1: ITradeInfo[] | any,
     enterTradeInfo_2: ITradeInfo[] | any,
+    cancelEnterTradeInfo: ITradeInfo[] | any,
     exitTradeInfo_1: ITradeInfo[] | any,
     exitTradeInfo_2: ITradeInfo[] | any,
+    cancelExitTradeInfo: ITradeInfo[] | any,
+    
 
     targetEnterPrimium: number,
     targetExitPrimium: number,
@@ -176,7 +179,7 @@ export interface IJobWorkerInfo extends IJobWorker {
 export interface JobConfig {
     maxInputAmount: number,
     leverage: number,
-    splitTradeQty: number,
+    numOfSplitTrade: number,
     useCurrencyHedge: boolean,
     enterPriority: ENTER_PRIORITY,
 }

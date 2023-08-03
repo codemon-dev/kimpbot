@@ -160,7 +160,7 @@ export default class BinanceHander {
                         totalQty: orderInfo.qty,
                         totalFee: fee,
                         orderInfos: [orderInfo],
-                        remainedBalance: accountInfo?.avaliableBalance ?? 0,
+                        avaliableBalance: accountInfo?.avaliableBalance ?? 0,
                         createdAt: orderInfo.timestamp,
                         updatedAt: orderInfo.timestamp,
                     }
@@ -210,7 +210,7 @@ export default class BinanceHander {
                         totalQty: orderInfo.qty,
                         totalFee: fee,
                         orderInfos: [orderInfo],
-                        remainedBalance: accountInfo?.avaliableBalance ?? 0,
+                        avaliableBalance: accountInfo?.avaliableBalance ?? 0,
                         createdAt: orderInfo.timestamp,
                         updatedAt: orderInfo.timestamp,
                     }

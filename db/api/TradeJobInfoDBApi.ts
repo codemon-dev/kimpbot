@@ -12,7 +12,7 @@ export default class TradeJobInfoDBApi {
     constructor(handlers: Handlers | undefined, _onload: any) {
         this.handlers = handlers;
         const filename = getDBFilePath(databaseName)
-        handlers?.logHandler?.log?.error(`TradeJobInfoDBApi filename ${filename}`);
+        handlers?.logHandler?.log?.info(`TradeJobInfoDBApi filename ${filename}`);
         const option: Nedb.DataStoreOptions = {
             filename: filename,
             autoload: true,
