@@ -14,7 +14,7 @@ import { IUpbitAccount, IUpbitOrderResponse, IUpbitOrdersResponse, UpbitChanceRe
 
 import { IPC_CMD } from "../../constants/ipcCmd";
 import { ExchangeHandlerConfig, IExchangeCoinInfo } from './exchangeHandler';
-import { getSymbolFromCoinPair } from '../../util/tradeUtil';
+import { getSymbolFromCoinPair, wrapNumber } from '../../util/tradeUtil';
 import { ORDER_TYPE, IOrderInfo, ITradeInfo } from '../../interface/ITradeInfo';
 import { FETCH_BALANCE_INTERVAL } from '../../constants/constants';
 
@@ -265,7 +265,7 @@ export default class UpbitHandler {
                         exchange: EXCHANGE.UPBIT,
                         orderId: orderRet.uuid,                        
                         type: ORDER_TYPE.SELL,
-                        avgPrice: funds / qty,
+                        avgPrice: wrapNumber(funds / qty),
                         totalVolume: funds,
                         totalQty: qty,
                         totalFee: parseFloat(orderRes.paid_fee),
@@ -409,7 +409,7 @@ export default class UpbitHandler {
             let bal = currencyAccount?.balance ?? 0;
             let lockedBal = currencyAccount?.locked ?? 0;
             let avaliableBalance = bal;
-            let pnl = (!this.coinInfos[this.coinPairs[0]] || this.coinInfos[this.coinPairs[0]]?.price === 0) ? 0 :((this.coinInfos[this.coinPairs[0]].price) - (coinAccount?.avg_buy_price ?? 0)) * (coinAccount?.balance ?? 0);
+            let pnl = wrapNumber((!this.coinInfos[this.coinPairs[0]] || this.coinInfos[this.coinPairs[0]]?.price === 0) ? 0 :((this.coinInfos[this.coinPairs[0]].price) - (coinAccount?.avg_buy_price ?? 0)) * (coinAccount?.balance ?? 0));
             this.accountInfo = {
                 coinPair: this.coinPairs[0],
                 initialMargin: 0,

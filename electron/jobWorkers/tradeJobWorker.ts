@@ -5,7 +5,7 @@ import Handlers from "../handler/Handlers";
 import ExchangeHandler, { ExchangeHandlerConfig, IExchangeCoinInfo } from "../handler/exchangeHandler";
 import { ICurrencyInfo } from '../../interface/ICurrency';
 import { COIN_PAIR, COIN_SYMBOL, CURRENCY_TYPE, EXCHANGE, ORDER_BID_ASK } from '../../constants/enum';
-import { calculatePrimium, calculateTether, convertExchangeOrederPrice, getAvgPriceFromOrderBook, getAvgPriceFromOrderBookByQty, getCurrencyTypeFromExchange, roundUpToDecimalPlaces } from '../../util/tradeUtil';
+import { calculatePrimium, calculateTether, convertExchangeOrederPrice, getAvgPriceFromOrderBook, getAvgPriceFromOrderBookByQty, getCurrencyTypeFromExchange, roundUpToDecimalPlaces, wrapNumber } from '../../util/tradeUtil';
 import { PRICE_BUFFER_RATE } from '../../constants/constants';
 import { AsyncLock } from '../../util/asyncLock';
 
@@ -140,15 +140,13 @@ export default class TradeJobWorker {
                 enteredBalance = enteredQty * tradeJobInfo.enterTradeStatus.avgPrice_1;
             }
         })
-        return enteredBalance;
+        return wrapNumber(enteredBalance);
     }
 
     private calculatePriceWithFee = (price: number, feeRate: number, additionalRate?: number) => {
-        return price * (additionalRate ?? 1) * (1.0 + feeRate);
+        return wrapNumber(price * (additionalRate ?? 1) * (1.0 + feeRate));
     
     }
-
-    
 
     private calculateMinTradingInfo = () => {
         let minTradingInfo: IMinTradingInfo = {
@@ -158,13 +156,13 @@ export default class TradeJobWorker {
             return minTradingInfo;
         }
         
-        const minNotation = Math.max(this.exchangeCoinInfo1.minNotional, this.exchangeCoinInfo2.minNotional * this.currencyInfo.price);
-        const minQty = Math.max(this.exchangeCoinInfo1.minQty, this.exchangeCoinInfo2.minQty)
-        const minNotationBuyAmount_1 = this.calculatePriceWithFee(minNotation, this.exchangeCoinInfo1.takerFee, PRICE_BUFFER_RATE)
-        const minNotationBuyAmount_2 = this.calculatePriceWithFee(minNotation, this.exchangeCoinInfo2.takerFee, PRICE_BUFFER_RATE)
-        const minQtyBuyAmount_1 = this.calculatePriceWithFee(minQty * this.coinInfo1.sellPrice, this.exchangeCoinInfo1.takerFee, PRICE_BUFFER_RATE)
-        const minQtyBuyAmount_2 = this.calculatePriceWithFee(minQty * this.coinInfo2.buyPrice, this.exchangeCoinInfo2.takerFee, PRICE_BUFFER_RATE) * this.currencyInfo.price
-        const minAmount = Math.max(minNotationBuyAmount_1, minNotationBuyAmount_2, minQtyBuyAmount_1, minQtyBuyAmount_2);
+        const minNotation = wrapNumber(Math.max(this.exchangeCoinInfo1.minNotional, this.exchangeCoinInfo2.minNotional * this.currencyInfo.price));
+        const minQty = wrapNumber(Math.max(this.exchangeCoinInfo1.minQty, this.exchangeCoinInfo2.minQty))
+        const minNotationBuyAmount_1 = wrapNumber(this.calculatePriceWithFee(minNotation, this.exchangeCoinInfo1.takerFee, PRICE_BUFFER_RATE))
+        const minNotationBuyAmount_2 = wrapNumber(this.calculatePriceWithFee(minNotation, this.exchangeCoinInfo2.takerFee, PRICE_BUFFER_RATE))
+        const minQtyBuyAmount_1 = wrapNumber(this.calculatePriceWithFee(minQty * this.coinInfo1.sellPrice, this.exchangeCoinInfo1.takerFee, PRICE_BUFFER_RATE))
+        const minQtyBuyAmount_2 = wrapNumber(this.calculatePriceWithFee(minQty * this.coinInfo2.buyPrice, this.exchangeCoinInfo2.takerFee, PRICE_BUFFER_RATE) * this.currencyInfo.price)
+        const minAmount = wrapNumber(Math.max(minNotationBuyAmount_1, minNotationBuyAmount_2, minQtyBuyAmount_1, minQtyBuyAmount_2));
         minTradingInfo.minNotation = minNotation;
         minTradingInfo.minQty = minQty;
         minTradingInfo.minAmount = minAmount;
@@ -184,21 +182,20 @@ export default class TradeJobWorker {
                 return true;
         }
         let enteredBalance = this.getEnteredBalance();
-        // exchage2는 90프로만 사용하도록 함.
-        let exchange2Balance = coinInfo2.accountInfo.avaliableBalance * coinInfo2.accountInfo.leverage * currencyInfo.price * 0.9;
-        let avaliableBalance: number = Math.min(coinInfo1.accountInfo.avaliableBalance, exchange2Balance);
-        let maxBalance: number = this.jobWorkerInfo.config.maxInputAmount - enteredBalance;
-        avaliableBalance = Math.min(avaliableBalance, maxBalance);
+        let exchange2Balance = wrapNumber(coinInfo2.accountInfo.avaliableBalance * coinInfo2.accountInfo.leverage * currencyInfo.price);
+        let avaliableBalance: number = wrapNumber(Math.min(coinInfo1.accountInfo.avaliableBalance, exchange2Balance));
+        let maxBalance: number = wrapNumber(this.jobWorkerInfo.config.maxInputAmount - enteredBalance);
+        avaliableBalance = wrapNumber(Math.min(avaliableBalance, maxBalance));
 
-        const avgSellPrice1 = getAvgPriceFromOrderBook(coinInfo1.orderBook.ask, avaliableBalance)
-        const avgBuyPrice1 = getAvgPriceFromOrderBook(coinInfo1.orderBook.bid, avaliableBalance)
-        const avgSellPrice2 = getAvgPriceFromOrderBook(coinInfo2.orderBook.ask, (avaliableBalance / currencyInfo.price))
-        const avgBuyPrice2 = getAvgPriceFromOrderBook(coinInfo2.orderBook.bid, (avaliableBalance / currencyInfo.price))
+        const avgSellPrice1 = wrapNumber(getAvgPriceFromOrderBook(coinInfo1.orderBook.ask, avaliableBalance));
+        const avgBuyPrice1 = wrapNumber(getAvgPriceFromOrderBook(coinInfo1.orderBook.bid, avaliableBalance));
+        const avgSellPrice2 = wrapNumber(getAvgPriceFromOrderBook(coinInfo2.orderBook.ask, (avaliableBalance / currencyInfo.price)));
+        const avgBuyPrice2 = wrapNumber(getAvgPriceFromOrderBook(coinInfo2.orderBook.bid, (avaliableBalance / currencyInfo.price)));
 
         if (avgSellPrice1 < 0 || avgBuyPrice1 < 0 || avgSellPrice2 < 0 || avgBuyPrice2 < 0) {
             return false;
         }
-        const curEnterPrimium = calculatePrimium(avgSellPrice1, avgBuyPrice2, currencyInfo.price);
+        const curEnterPrimium = wrapNumber(calculatePrimium(avgSellPrice1, avgBuyPrice2, currencyInfo.price));
 
         if (curEnterPrimium <= this.jobWorkerInfo.enterTargetPrimium) {            
             const minTradingInfo: IMinTradingInfo = this.calculateMinTradingInfo();
@@ -206,7 +203,7 @@ export default class TradeJobWorker {
                 this.handlers?.logHandler?.log?.error(`[processEnter] skip processEnter. minTradingInfo: `, minTradingInfo);
                 return false;
             }
-            if (avaliableBalance < (minTradingInfo.minAmount * 2) || this.jobWorkerInfo.config.maxInputAmount < (minTradingInfo.minAmount * 2)) {
+            if (avaliableBalance < (wrapNumber(minTradingInfo.minAmount * 2)) || this.jobWorkerInfo.config.maxInputAmount < (wrapNumber(minTradingInfo.minAmount * 2))) {
                 return true;
             }
             this.handlers?.logHandler?.log?.info(`[processEnter] minTradingInfo: `, minTradingInfo);
@@ -240,20 +237,20 @@ export default class TradeJobWorker {
             // fake 거래로 거래 확인. ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////                
             // Disable FakeTrade. TODO. biance fail to cancle ETH order
             // // Fake Trade.
-            // let exchane1FakeTradePrice = Math.ceil(coinInfo1.price * 0.8);    // 20프로 아래 가격 매수
+            // let exchane1FakeTradePrice = wrapNumber(Math.ceil(coinInfo1.price * 0.8));    // 20프로 아래 가격 매수
             // exchane1FakeTradePrice = convertExchangeOrederPrice(this.exchange1Handler?.exchange?? EXCHANGE.NONE, exchane1FakeTradePrice);
-            // let exchane1FakeTradeQty = Math.ceil((exchangeCoinInfo1.minNotional / exchane1FakeTradePrice) * 1000000) / 1000000;    // 50프로 아래 가격
+            // let exchane1FakeTradeQty = wrapNumber(Math.ceil((exchangeCoinInfo1.minNotional / exchane1FakeTradePrice) * 1000000) / 1000000);    // 50프로 아래 가격
             // // this.handlers?.logHandler?.log?.debug("exchane1FakeTradePrice: ", exchane1FakeTradePrice)
             // // this.handlers?.logHandler?.log?.debug("exchane1FakeTradeVolume: ", exchane1FakeTradeQty)
 
-            // let exchane2FakeTradePrice = Math.ceil(coinInfo2.price * 1.2);    // 20프로 위 가격 Shot
-            // let exchane2FakeTradeQty = Math.max(exchangeCoinInfo2.minQty, exchangeCoinInfo2.minNotional / exchane2FakeTradePrice);                        
+            // let exchane2FakeTradePrice = wrapNumber(Math.ceil(coinInfo2.price * 1.2));    // 20프로 위 가격 Shot
+            // let exchane2FakeTradeQty = wrapNumber(Math.max(exchangeCoinInfo2.minQty, exchangeCoinInfo2.minNotional / exchane2FakeTradePrice));
             // if (this.exchangeCoinInfo2?.quantityPrecision && this.exchangeCoinInfo2?.quantityPrecision >= 0) {
             //     exchane2FakeTradeQty = roundUpToDecimalPlaces(exchane2FakeTradeQty, this.exchangeCoinInfo2?.quantityPrecision);
             // }
             
-            // if (avaliableBalance <= exchane1FakeTradePrice * (1.0 + (this.exchangeCoinInfo1?.takerFee ?? 0)) * exchane1FakeTradeQty
-            // || avaliableBalance <= exchane2FakeTradePrice * (1.0 + (this.exchangeCoinInfo2?.takerFee ?? 0)) * exchane2FakeTradeQty) {
+            // if (avaliableBalance <= wrapNumber(exchane1FakeTradePrice * (1.0 + (this.exchangeCoinInfo1?.takerFee ?? 0)) * exchane1FakeTradeQty)
+            // || avaliableBalance <= wrapNumber(exchane2FakeTradePrice * (1.0 + (this.exchangeCoinInfo2?.takerFee ?? 0)) * exchane2FakeTradeQty)) {
             //     // this.handlers?.logHandler?.log?.debug(`555555555`)
             //     return true;
             // }
@@ -333,18 +330,18 @@ export default class TradeJobWorker {
             if (avgSellPrice1 < 0 || avgBuyPrice1 < 0 || avgSellPrice2 < 0 || avgBuyPrice2 < 0) {
                 return false;
             }
-            const curExitPrimium = calculatePrimium(avgBuyPrice1, avgSellPrice2, currencyInfo.price);
+            const curExitPrimium: number = calculatePrimium(avgBuyPrice1, avgSellPrice2, currencyInfo.price);
             const curThether: number = calculateTether(curExitPrimium, currencyInfo.price);
             
             if (tradeJobInfo.targetExitTheTher <= curThether) {                
                 this.handlers?.logHandler?.log?.debug(`curExitPrimium: ${curExitPrimium}, curThether: ${curThether}`);
-                // let exchane1FakeTradePrice = Math.ceil(coinInfo1.price * 1.2);    // 20프로 위 가격 매도
+                // let exchane1FakeTradePrice = wrapNumber(Math.ceil(coinInfo1.price * 1.2));    // 20프로 위 가격 매도
                 // exchane1FakeTradePrice = convertExchangeOrederPrice(this.exchange1Handler?.exchange?? EXCHANGE.NONE, exchane1FakeTradePrice);
-                // let exchane1FakeTradeQty = Math.ceil((this.exchangeCoinInfo1.minNotional / exchane1FakeTradePrice) * 1000000) / 1000000;    //20프로 아래 가격
+                // let exchane1FakeTradeQty = wrapNumber(Math.ceil((this.exchangeCoinInfo1.minNotional / exchane1FakeTradePrice) * 1000000) / 1000000);    //20프로 아래 가격
                 // // this.handlers?.logHandler?.log?.debug("exchane1FakeTradePrice: ", exchane1FakeTradePrice)
                 // // this.handlers?.logHandler?.log?.debug("exchane1FakeTradeVolume: ", exchane1FakeTradeQty)
-                // let exchane2FakeTradePrice = Math.ceil(coinInfo2.price * 0.8);    // 20프로 아래 가격 long
-                // let exchane2FakeTradeQty = Math.max(this.exchangeCoinInfo2.minQty, this.exchangeCoinInfo2.minNotional / exchane2FakeTradePrice)
+                // let exchane2FakeTradePrice = wrapNumber(Math.ceil(coinInfo2.price * 0.8));    // 20프로 아래 가격 long
+                // let exchane2FakeTradeQty = wrapNumber(Math.max(this.exchangeCoinInfo2.minQty, this.exchangeCoinInfo2.minNotional / exchane2FakeTradePrice))
 
                 // // fake 거래로 거래 확인.                
                 // let promises: any = []
@@ -572,14 +569,14 @@ export default class TradeJobWorker {
         this.handlers?.logHandler?.log?.info("start enterPosition. exchangeCoinInfo1: ", this.exchangeCoinInfo1)
         this.handlers?.logHandler?.log?.info("start enterPosition. exchangeCoinInfo2: ", this.exchangeCoinInfo2)
 
-        let spiltAmount = amount / this.jobWorkerInfo.config.numOfSplitTrade;
+        let spiltAmount = wrapNumber(amount / this.jobWorkerInfo.config.numOfSplitTrade);
         
         if (spiltAmount < minTradingInfo.minAmount) {
             spiltAmount = minTradingInfo.minAmount;
         }
         let remainedAmount = amount;
         let remainedBalance_1 = coinInfo1.accountInfo?.avaliableBalance;
-        let remainedBalance_2 = coinInfo2.accountInfo.avaliableBalance * coinInfo2.accountInfo.leverage;
+        let remainedBalance_2 = wrapNumber(coinInfo2.accountInfo.avaliableBalance * coinInfo2.accountInfo.leverage);
         let isLastOrder = false;
 
         const enterStartThether = calculateTether(enterStartPrimium, currencyInfo.price)
@@ -692,25 +689,25 @@ export default class TradeJobWorker {
                 break;
             }            
 
-            if (remainedBalance_1 < spiltAmount || (remainedBalance_2 * this.currencyInfo.price) < spiltAmount) {
+            if (remainedBalance_1 < spiltAmount || wrapNumber(remainedBalance_2 * this.currencyInfo.price) < wrapNumber(spiltAmount)) {
                 break;
             }            
             
             let orderAmount = 0;
-            if (remainedAmount < spiltAmount + (minTradingInfo.minAmount * 2)) {
-                orderAmount = remainedAmount;
+            if (remainedAmount < wrapNumber(spiltAmount + (minTradingInfo.minAmount * 2))) {
+                orderAmount = wrapNumber(remainedAmount);
                 isLastOrder = true;
             } else {
-                orderAmount = spiltAmount;
+                orderAmount = wrapNumber(spiltAmount);
                 isLastOrder = false;
             }
             this.handlers?.logHandler?.log?.info(`[enterPosition][spiltOrderIndex: ${index}] orderAmount: ${orderAmount}, isLastOrder: ${isLastOrder}`);
-            const minNotaion_1 = Math.max(
+            const minNotaion_1 = wrapNumber(Math.max(
                 this.calculatePriceWithFee(this.coinInfo1.sellPrice * minTradingInfo.minQty, this.exchangeCoinInfo1.takerFee, PRICE_BUFFER_RATE), 
-                this.calculatePriceWithFee(this.exchangeCoinInfo1.minNotional, this.exchangeCoinInfo1.takerFee, PRICE_BUFFER_RATE));
-            const minNotaion_2 = Math.max(
+                this.calculatePriceWithFee(this.exchangeCoinInfo1.minNotional, this.exchangeCoinInfo1.takerFee, PRICE_BUFFER_RATE)));
+            const minNotaion_2 = wrapNumber(Math.max(
                 this.calculatePriceWithFee(this.coinInfo2.buyPrice * minTradingInfo.minQty, this.exchangeCoinInfo2.takerFee, PRICE_BUFFER_RATE), 
-                this.calculatePriceWithFee(this.exchangeCoinInfo2.minNotional, this.exchangeCoinInfo2.takerFee, PRICE_BUFFER_RATE)) * this.currencyInfo.price;
+                this.calculatePriceWithFee(this.exchangeCoinInfo2.minNotional, this.exchangeCoinInfo2.takerFee, PRICE_BUFFER_RATE)) * this.currencyInfo.price);
             if (orderAmount < minTradingInfo.minAmount || orderAmount < minNotaion_1 || orderAmount < minNotaion_2) {
                 this.handlers?.logHandler?.log?.error(`[enterPosition][spiltOrderIndex: ${index}] stop enterPosition. this.currencyInfo.price: ${this.currencyInfo.price}, coinInfo1.sellPrice: ${coinInfo1.sellPrice}, coinInfo2.buyPrice: ${coinInfo2.buyPrice}`);
                 this.handlers?.logHandler?.log?.error(`[enterPosition][spiltOrderIndex: ${index}] stop enterPosition. orderAmount: ${orderAmount}, minAmount: ${minTradingInfo.minAmount}, minNotaion_1: ${minNotaion_1}, minNotaion_2: ${minNotaion_2}`);
@@ -725,25 +722,25 @@ export default class TradeJobWorker {
                 this.handlers?.logHandler?.log?.info("cancel_tradeInfo: ", subProcessRet.cancel_tradeInfo);
                 tradeJobInfo.enterTradeStatus.timestamp = Date.now();                
                 if (subProcessRet.isSuccess === true) {
-                    tradeJobInfo.enterTradeStatus.totalVolume_1 += subProcessRet.tradeInfo_1?.totalVolume ?? 0;
-                    tradeJobInfo.enterTradeStatus.totalQty_1 += subProcessRet.tradeInfo_1?.totalQty ?? 0;
-                    tradeJobInfo.enterTradeStatus.totalFee_1 += subProcessRet.tradeInfo_1?.totalFee ?? 0;
-                    tradeJobInfo.enterTradeStatus.avgPrice_1 = tradeJobInfo.enterTradeStatus.totalVolume_1 / tradeJobInfo.enterTradeStatus.totalQty_1;
+                    tradeJobInfo.enterTradeStatus.totalVolume_1 = wrapNumber(tradeJobInfo.enterTradeStatus.totalVolume_1 + subProcessRet.tradeInfo_1?.totalVolume ?? 0);
+                    tradeJobInfo.enterTradeStatus.totalQty_1 = wrapNumber(tradeJobInfo.enterTradeStatus.totalQty_1 + subProcessRet.tradeInfo_1?.totalQty ?? 0);
+                    tradeJobInfo.enterTradeStatus.totalFee_1 = wrapNumber(tradeJobInfo.enterTradeStatus.totalFee_1 +subProcessRet.tradeInfo_1?.totalFee ?? 0);
+                    tradeJobInfo.enterTradeStatus.avgPrice_1 = wrapNumber(tradeJobInfo.enterTradeStatus.totalVolume_1 / tradeJobInfo.enterTradeStatus.totalQty_1);
         
-                    tradeJobInfo.enterTradeStatus.totalVolume_2 += subProcessRet.tradeInfo_2?.totalVolume ?? 0;
-                    tradeJobInfo.enterTradeStatus.totalQty_2 += subProcessRet.tradeInfo_2?.totalQty ?? 0;
-                    tradeJobInfo.enterTradeStatus.totalFee_2 += subProcessRet.tradeInfo_2?.totalFee ?? 0;
-                    tradeJobInfo.enterTradeStatus.avgPrice_2 = tradeJobInfo.enterTradeStatus.totalVolume_2 / tradeJobInfo.enterTradeStatus.totalQty_2;
+                    tradeJobInfo.enterTradeStatus.totalVolume_2 = wrapNumber(tradeJobInfo.enterTradeStatus.totalVolume_2 + subProcessRet.tradeInfo_2?.totalVolume ?? 0);
+                    tradeJobInfo.enterTradeStatus.totalQty_2 = wrapNumber(tradeJobInfo.enterTradeStatus.totalQty_2 +subProcessRet.tradeInfo_2?.totalQty ?? 0);
+                    tradeJobInfo.enterTradeStatus.totalFee_2 = wrapNumber(tradeJobInfo.enterTradeStatus.totalFee_2 + subProcessRet.tradeInfo_2?.totalFee ?? 0);
+                    tradeJobInfo.enterTradeStatus.avgPrice_2 = wrapNumber(tradeJobInfo.enterTradeStatus.totalVolume_2 / tradeJobInfo.enterTradeStatus.totalQty_2);
                 } else {
-                    tradeJobInfo.enterTradeStatus.totalVolume_fail += subProcessRet.tradeInfo_1?.totalVolume;
-                    tradeJobInfo.enterTradeStatus.totalQty_fail += subProcessRet.tradeInfo_1?.totalQty ?? 0;
-                    tradeJobInfo.enterTradeStatus.totalFee_fail += ((subProcessRet.tradeInfo_1?.totalFee ?? 0) + (subProcessRet.tradeInfo_cancel?.totalFee ?? 0));
-                    tradeJobInfo.enterTradeStatus.avgPrice_fail = tradeJobInfo.enterTradeStatus.totalVolume_fail / tradeJobInfo.enterTradeStatus.totalQty_fail;
+                    tradeJobInfo.enterTradeStatus.totalVolume_fail = wrapNumber(tradeJobInfo.enterTradeStatus.totalVolume_fail +subProcessRet.tradeInfo_1?.totalVolume);
+                    tradeJobInfo.enterTradeStatus.totalQty_fail = wrapNumber(tradeJobInfo.enterTradeStatus.totalQty_fail + subProcessRet.tradeInfo_1?.totalQty ?? 0);
+                    tradeJobInfo.enterTradeStatus.totalFee_fail = wrapNumber(tradeJobInfo.enterTradeStatus.totalFee_fail + (subProcessRet.tradeInfo_1?.totalFee ?? 0) + (subProcessRet.tradeInfo_cancel?.totalFee ?? 0));
+                    tradeJobInfo.enterTradeStatus.avgPrice_fail = wrapNumber(tradeJobInfo.enterTradeStatus.totalVolume_fail / tradeJobInfo.enterTradeStatus.totalQty_fail);
 
-                    tradeJobInfo.enterTradeStatus.totalVolume_cancel += subProcessRet.tradeInfo_cancel?.totalVolume ?? 0;
-                    tradeJobInfo.enterTradeStatus.totalQty_cancel += subProcessRet.tradeInfo_cancel?.totalQty ?? 0;
-                    tradeJobInfo.enterTradeStatus.totalFee_cancel += subProcessRet.tradeInfo_cancel?.totalFee ?? 0;
-                    tradeJobInfo.enterTradeStatus.avgPrice_cancel = tradeJobInfo.enterTradeStatus.totalVolume_cancel / tradeJobInfo.enterTradeStatus.totalQty_cancel;
+                    tradeJobInfo.enterTradeStatus.totalVolume_cancel = wrapNumber(tradeJobInfo.enterTradeStatus.totalVolume_cancel + subProcessRet.tradeInfo_cancel?.totalVolume ?? 0);
+                    tradeJobInfo.enterTradeStatus.totalQty_cancel = wrapNumber(tradeJobInfo.enterTradeStatus.totalQty_cancel + subProcessRet.tradeInfo_cancel?.totalQty ?? 0);
+                    tradeJobInfo.enterTradeStatus.totalFee_cancel = wrapNumber(tradeJobInfo.enterTradeStatus.totalFee_cancel + subProcessRet.tradeInfo_cancel?.totalFee ?? 0);
+                    tradeJobInfo.enterTradeStatus.avgPrice_cancel = wrapNumber(tradeJobInfo.enterTradeStatus.totalVolume_cancel / tradeJobInfo.enterTradeStatus.totalQty_cancel);
                 }                
     
                 if (subProcessRet.tradeInfo_1) {
@@ -763,11 +760,11 @@ export default class TradeJobWorker {
             if (isLastOrder === true || subProcessRet?.isSuccess === false) {
                 break;
             }
-            remainedAmount -= ((subProcessRet.tradeInfo_1?.totalVolume ?? 0) + (subProcessRet.tradeInfo_1?.totalFee ?? 0));
-            remainedBalance_1 = (subProcessRet.tradeInfo_1?.avaliableBalance ?? 0);
-            remainedBalance_2 = (subProcessRet.tradeInfo_2?.avaliableBalance ?? 0) * coinInfo2.accountInfo.leverage;
-            if (amount <= tradeJobInfo.enterTradeStatus.totalVolume_1 + tradeJobInfo.enterTradeStatus.totalFee_1) {
-                this.handlers?.logHandler?.log?.error(`[enterPosition][spiltOrderIndex: ${index}] force stop enterPosition. amount: ${amount}, tradeJobInfo.enterTradeStatus.totalVolume_1 + tradeJobInfo.enterTradeStatus.totalFee_1: ${tradeJobInfo.enterTradeStatus.totalVolume_1 + tradeJobInfo.enterTradeStatus.totalFee_1}`);
+            remainedAmount = wrapNumber(remainedAmount - ((subProcessRet.tradeInfo_1?.totalVolume ?? 0) + (subProcessRet.tradeInfo_1?.totalFee ?? 0)));
+            remainedBalance_1 = wrapNumber(subProcessRet.tradeInfo_1?.avaliableBalance ?? 0);
+            remainedBalance_2 = wrapNumber((subProcessRet.tradeInfo_2?.avaliableBalance ?? 0) * coinInfo2.accountInfo.leverage);
+            if (amount <= wrapNumber(tradeJobInfo.enterTradeStatus.totalVolume_1 + tradeJobInfo.enterTradeStatus.totalFee_1)) {
+                this.handlers?.logHandler?.log?.error(`[enterPosition][spiltOrderIndex: ${index}] force stop enterPosition. amount: ${amount}, tradeJobInfo.enterTradeStatus.totalVolume_1 + tradeJobInfo.enterTradeStatus.totalFee_1: ${wrapNumber(tradeJobInfo.enterTradeStatus.totalVolume_1 + tradeJobInfo.enterTradeStatus.totalFee_1)}`);
                 break;
             }
             index++;
@@ -785,7 +782,7 @@ export default class TradeJobWorker {
         if ((tradeJobInfo.enterTradeStatus.totalQty_fail === 0 && tradeJobInfo.enterTradeStatus.totalQty_cancel === 0)
             || tradeJobInfo.enterTradeStatus.totalQty_fail > 0 && tradeJobInfo.enterTradeStatus.totalQty_fail === tradeJobInfo.enterTradeStatus.totalQty_cancel) {
             tradeJobInfo.enterCompleteType = COMPLETE_TYPE.SUCCESS;
-            tradeJobInfo.targetExitTheTher = tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01));
+            tradeJobInfo.targetExitTheTher = wrapNumber(tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01)));
         } else {
             tradeJobInfo.enterCompleteType = COMPLETE_TYPE.FAIL;
         }
@@ -795,7 +792,7 @@ export default class TradeJobWorker {
     }
 
     private calculateAmountWithoutFee = (amount: number, fee: number) => {
-        return amount / (1.0 + fee);
+        return wrapNumber(amount / (1.0 + fee));
     }
 
     private enterSubProcess = (amount: number, minQty: number, index: number) => {
@@ -821,8 +818,8 @@ export default class TradeJobWorker {
             const coinInfo1 = _.cloneDeep(this.coinInfo1);
             let amountWithoutFee = this.calculateAmountWithoutFee(amount, this.exchangeCoinInfo1.takerFee)
             let orderPirce = convertExchangeOrederPrice(this.exchange1Handler?.exchange ?? EXCHANGE.NONE, coinInfo1.sellPrice * PRICE_BUFFER_RATE)            
-            let volume = amountWithoutFee / (coinInfo1.sellPrice * PRICE_BUFFER_RATE);
-            volume = minQty * Math.floor(volume / minQty)
+            let volume = wrapNumber(amountWithoutFee / (coinInfo1.sellPrice * PRICE_BUFFER_RATE));
+            volume = wrapNumber(minQty * Math.floor(volume / minQty))
             if (volume === 0) {
                 this.handlers?.logHandler?.log?.error(`[enterSubProcess][spiltOrderIndex: ${index}] skip enterSubProcess. volume is 0`)
                 resolve(null);
@@ -890,19 +887,20 @@ export default class TradeJobWorker {
         const currencyPrice = this.currencyInfo.price;
         let remainedQty_1 = tradeJobInfo.enterTradeStatus.totalQty_1;
         let remainedQty_2 = tradeJobInfo.enterTradeStatus.totalQty_2;        
-        const minQty_1 = minTradingInfo.minAmount / this.coinInfo1.buyPrice
-        const minQty_2 = minTradingInfo.minAmount / (this.coinInfo2.sellPrice * this.currencyInfo.price)
-        const minQty = Math.max(minQty_1, minQty_2);
+        const minQty_1 = wrapNumber(minTradingInfo.minAmount / this.coinInfo1.buyPrice);
+        const minQty_2 = wrapNumber(minTradingInfo.minAmount / (this.coinInfo2.sellPrice * this.currencyInfo.price));
+        let minQty = wrapNumber(Math.max(minQty_1, minQty_2));
+        minQty = wrapNumber((1 + Math.floor(minQty / minTradingInfo.minQty)) * minTradingInfo.minQty)
         this.handlers?.logHandler?.log?.info(`minQty: ${minQty}, minQty_1: ${minQty_1}, minQty_2: ${minQty_2}`);
-        if (remainedQty_1 < minQty || remainedQty_2 < minQty) {
+        if (minQty === 0 || remainedQty_1 < minQty || remainedQty_2 < minQty) {
             this.handlers?.logHandler?.log?.error(`exitPosition is something wrong: minQty: ${minQty}, remainedQty_1: ${remainedQty_1}, remainedQty_2: ${remainedQty_2}`);
             return;
         }
         let index = 0;
-        let spiltQty_1 = Math.max(remainedQty_1 / this.jobWorkerInfo.config.numOfSplitTrade, minQty);        
-        let spiltQty_2 = Math.max(remainedQty_2 / this.jobWorkerInfo.config.numOfSplitTrade, minQty);
-        spiltQty_1 = Math.floor(spiltQty_1 / minQty) * minQty
-        spiltQty_2 = Math.floor(spiltQty_2 / minQty) * minQty
+        let spiltQty_1 = wrapNumber(Math.max(remainedQty_1 / this.jobWorkerInfo.config.numOfSplitTrade, minQty));
+        let spiltQty_2 = wrapNumber(Math.max(remainedQty_2 / this.jobWorkerInfo.config.numOfSplitTrade, minQty));
+        spiltQty_1 = wrapNumber(Math.floor(spiltQty_1 / minQty) * minQty);
+        spiltQty_2 = wrapNumber(Math.floor(spiltQty_2 / minQty) * minQty);
         this.handlers?.logHandler?.log?.info(`minQty: ${minQty}, remainedQty_1: ${remainedQty_1}, remainedQty_2: ${remainedQty_1}, spiltQty_1: ${spiltQty_1}, spiltQty_2: ${spiltQty_2}`);
         if (spiltQty_1 === 0 || spiltQty_1 === 0) {
             this.handlers?.logHandler?.log?.error(`exitPosition is something wrong: minQty: ${minQty}, remainedQty_1: ${remainedQty_1}, remainedQty_2: ${remainedQty_1}, spiltQty_1: ${spiltQty_1}, spiltQty_2: ${spiltQty_2}`);
@@ -911,10 +909,10 @@ export default class TradeJobWorker {
         while(true) {
             let qty_1= spiltQty_1;
             let qty_2= spiltQty_2;
-            if (remainedQty_1 < spiltQty_1 + (minQty * 2)) {
+            if (remainedQty_1 < wrapNumber(spiltQty_1 + (minQty * 2))) {
                 qty_1 = remainedQty_1   
             }
-            if (remainedQty_2 < spiltQty_2 + (minQty * 2)) {
+            if (remainedQty_2 < wrapNumber(spiltQty_2 + (minQty * 2))) {
                 qty_2 = remainedQty_2
             }
             let ret: any = await this.exitSubProcess(qty_1, qty_2, index)
@@ -924,15 +922,15 @@ export default class TradeJobWorker {
                 this.handlers?.logHandler?.log?.info("tradeInfo_1: ", subProcessRet.tradeInfo_1);
                 this.handlers?.logHandler?.log?.info("tradeInfo_2: ", subProcessRet.tradeInfo_2);
                 tradeJobInfo.exitTradeStatus.timestamp = Date.now();
-                tradeJobInfo.exitTradeStatus.totalVolume_1 += ((subProcessRet.tradeInfo_1?.totalVolume ?? 0) + (subProcessRet.tradeInfo_1_1?.totalVolume ?? 0));
-                tradeJobInfo.exitTradeStatus.totalQty_1 += ((subProcessRet.tradeInfo_1?.totalQty ?? 0) + (subProcessRet.tradeInfo_1_1?.totalQty ?? 0));
-                tradeJobInfo.exitTradeStatus.totalFee_1 += ((subProcessRet.tradeInfo_1?.totalFee ?? 0) + (subProcessRet.tradeInfo_1_1?.totalFee ?? 0));
-                tradeJobInfo.exitTradeStatus.avgPrice_1 = tradeJobInfo.exitTradeStatus.totalVolume_1 / tradeJobInfo.exitTradeStatus.totalQty_1;
+                tradeJobInfo.exitTradeStatus.totalVolume_1 = wrapNumber(tradeJobInfo.exitTradeStatus.totalVolume_1 + ((subProcessRet.tradeInfo_1?.totalVolume ?? 0) + (subProcessRet.tradeInfo_1_1?.totalVolume ?? 0)));
+                tradeJobInfo.exitTradeStatus.totalQty_1 = wrapNumber(tradeJobInfo.exitTradeStatus.totalQty_1 + ((subProcessRet.tradeInfo_1?.totalQty ?? 0) + (subProcessRet.tradeInfo_1_1?.totalQty ?? 0)));
+                tradeJobInfo.exitTradeStatus.totalFee_1 = wrapNumber(tradeJobInfo.exitTradeStatus.totalFee_1 + ((subProcessRet.tradeInfo_1?.totalFee ?? 0) + (subProcessRet.tradeInfo_1_1?.totalFee ?? 0)));
+                tradeJobInfo.exitTradeStatus.avgPrice_1 = wrapNumber(tradeJobInfo.exitTradeStatus.totalVolume_1 / tradeJobInfo.exitTradeStatus.totalQty_1);
 
-                tradeJobInfo.exitTradeStatus.totalVolume_2 += subProcessRet.tradeInfo_2?.totalVolume ?? 0;
-                tradeJobInfo.exitTradeStatus.totalQty_2 += subProcessRet.tradeInfo_2?.totalQty ?? 0;
-                tradeJobInfo.exitTradeStatus.totalFee_2 += subProcessRet.tradeInfo_2?.totalFee ?? 0;
-                tradeJobInfo.exitTradeStatus.avgPrice_2 = tradeJobInfo.exitTradeStatus.totalVolume_2 / tradeJobInfo.exitTradeStatus.totalQty_2;             
+                tradeJobInfo.exitTradeStatus.totalVolume_2 = wrapNumber(tradeJobInfo.exitTradeStatus.totalVolume_2 + subProcessRet.tradeInfo_2?.totalVolume ?? 0)
+                tradeJobInfo.exitTradeStatus.totalQty_2 = wrapNumber(tradeJobInfo.exitTradeStatus.totalQty_2 + subProcessRet.tradeInfo_2?.totalQty ?? 0)
+                tradeJobInfo.exitTradeStatus.totalFee_2 = wrapNumber(tradeJobInfo.exitTradeStatus.totalFee_2 + subProcessRet.tradeInfo_2?.totalFee ?? 0)
+                tradeJobInfo.exitTradeStatus.avgPrice_2 = wrapNumber(tradeJobInfo.exitTradeStatus.totalVolume_2 / tradeJobInfo.exitTradeStatus.totalQty_2);
 
                 if (subProcessRet.tradeInfo_1) {
                     tradeJobInfo.exitTradeInfo_1.push(subProcessRet.tradeInfo_1);
@@ -961,15 +959,15 @@ export default class TradeJobWorker {
             tradeJobInfo.exitedPrimium = calculatePrimium(tradeJobInfo.exitTradeStatus.avgPrice_1, tradeJobInfo.exitTradeStatus.avgPrice_2, currencyPrice);
             tradeJobInfo.exitStartThether = calculateTether(tradeJobInfo.exitStartPrimium, currencyPrice);
             tradeJobInfo.exitedThether = calculateTether(tradeJobInfo.exitedPrimium, currencyPrice);
-            tradeJobInfo.fee_1 = (tradeJobInfo.enterTradeStatus.totalFee_1 + tradeJobInfo.enterTradeStatus.totalFee_cancel + tradeJobInfo.enterTradeStatus.totalFee_fail) + (tradeJobInfo.exitTradeStatus.totalFee_1 + tradeJobInfo.exitTradeStatus.totalFee_cancel + tradeJobInfo.exitTradeStatus.totalFee_fail);
-            tradeJobInfo.fee_2 = (tradeJobInfo.enterTradeStatus.totalFee_2 + tradeJobInfo.exitTradeStatus.totalFee_2) * tradeJobInfo.exitedThether;
-            tradeJobInfo.totalFee = tradeJobInfo.fee_1 + tradeJobInfo.fee_2;
-            tradeJobInfo.profit_1 = tradeJobInfo.exitTradeStatus.totalVolume_1 - tradeJobInfo.enterTradeStatus.totalVolume_1;
-            tradeJobInfo.profit_2 = ((((tradeJobInfo.enterTradeStatus.avgPrice_2 / tradeJobInfo.leverage_2) + (tradeJobInfo.enterTradeStatus.avgPrice_2 - tradeJobInfo.exitTradeStatus.avgPrice_2)) * tradeJobInfo.exitedThether) - ((tradeJobInfo.enterTradeStatus.avgPrice_2 / tradeJobInfo.leverage_2) * tradeJobInfo.enteredThether)) * tradeJobInfo.exitTradeStatus.totalQty_1;
-            tradeJobInfo.totalProfit = tradeJobInfo.profit_1 + tradeJobInfo.profit_2;
-            tradeJobInfo.totalProfitIncludeFee = tradeJobInfo.totalProfit - tradeJobInfo.totalFee;
-            tradeJobInfo.profitRate = tradeJobInfo.totalProfit / (tradeJobInfo.enterTradeStatus.totalVolume_1 + (tradeJobInfo.enterTradeStatus.totalVolume_2 * tradeJobInfo.exitedThether)) * 100
-            tradeJobInfo.profitRateIncludeFee = tradeJobInfo.totalProfitIncludeFee / (tradeJobInfo.enterTradeStatus.totalVolume_1 + (tradeJobInfo.enterTradeStatus.totalVolume_2 * tradeJobInfo.exitedThether)) * 100
+            tradeJobInfo.fee_1 = wrapNumber((tradeJobInfo.enterTradeStatus.totalFee_1 + tradeJobInfo.enterTradeStatus.totalFee_cancel + tradeJobInfo.enterTradeStatus.totalFee_fail) + (tradeJobInfo.exitTradeStatus.totalFee_1 + tradeJobInfo.exitTradeStatus.totalFee_cancel + tradeJobInfo.exitTradeStatus.totalFee_fail));
+            tradeJobInfo.fee_2 = wrapNumber((tradeJobInfo.enterTradeStatus.totalFee_2 + tradeJobInfo.exitTradeStatus.totalFee_2) * tradeJobInfo.exitedThether);
+            tradeJobInfo.totalFee = wrapNumber(tradeJobInfo.fee_1 + tradeJobInfo.fee_2);
+            tradeJobInfo.profit_1 = wrapNumber(tradeJobInfo.exitTradeStatus.totalVolume_1 - tradeJobInfo.enterTradeStatus.totalVolume_1);
+            tradeJobInfo.profit_2 = wrapNumber(((((tradeJobInfo.enterTradeStatus.avgPrice_2 / tradeJobInfo.leverage_2) + (tradeJobInfo.enterTradeStatus.avgPrice_2 - tradeJobInfo.exitTradeStatus.avgPrice_2)) * tradeJobInfo.exitedThether) - ((tradeJobInfo.enterTradeStatus.avgPrice_2 / tradeJobInfo.leverage_2) * tradeJobInfo.enteredThether)) * tradeJobInfo.exitTradeStatus.totalQty_1);
+            tradeJobInfo.totalProfit = wrapNumber(tradeJobInfo.profit_1 + tradeJobInfo.profit_2);
+            tradeJobInfo.totalProfitIncludeFee = wrapNumber(tradeJobInfo.totalProfit - tradeJobInfo.totalFee);
+            tradeJobInfo.profitRate = wrapNumber(tradeJobInfo.totalProfit / (tradeJobInfo.enterTradeStatus.totalVolume_1 + (tradeJobInfo.enterTradeStatus.totalVolume_2 * tradeJobInfo.exitedThether)) * 100);
+            tradeJobInfo.profitRateIncludeFee = wrapNumber(tradeJobInfo.totalProfitIncludeFee / (tradeJobInfo.enterTradeStatus.totalVolume_1 + (tradeJobInfo.enterTradeStatus.totalVolume_2 * tradeJobInfo.exitedThether)) * 100);
         }
         this.handlers?.logHandler?.log?.info("complete exitPosition. tradeJobInfo: ", tradeJobInfo);
         return tradeJobInfo;

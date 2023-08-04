@@ -6,10 +6,10 @@ import { COIN_PAIR, COIN_SYMBOL, CURRENCY_TYPE, EXCHANGE, EXCHANGE_TYPE, ORDER_B
 import { IBestBidAsk } from "../../interface/IBinance";
 import { IBinanceAggTrade } from "../../interface/IBinance";
 import { ExchangeHandlerConfig, IExchangeCoinInfo } from "./exchangeHandler";
-import { getSymbolFromCoinPair } from "../../util/tradeUtil";
+import { getSymbolFromCoinPair, wrapNumber } from "../../util/tradeUtil";
 import { IOrderInfo, ITradeInfo, ORDER_TYPE } from "../../interface/ITradeInfo";
-import _ from "lodash";
 import { FETCH_BALANCE_INTERVAL } from "../../constants/constants";
+import _ from "lodash";
 
 export default class BinanceHander {
     private handlers: Handlers | undefined;
@@ -129,7 +129,8 @@ export default class BinanceHander {
         return new Promise(async (resolve) => {
             try {
                 let orderRet: any;
-                volume = this.binance?.roundStep(volume, this.exchnageCoinInfos.get(this.coinPairs[0])?.stepSize)
+                // roundStep(2.7)=2.6
+                // volume = wrapNumber(this.binance?.roundStep(volume, this.exchnageCoinInfos.get(this.coinPairs[0])?.stepSize))
                 orderRet = await this.binance?.futuresMarketBuy(this.coinPairs[0], volume, {positionSide: "SHORT", newOrderRespType: 'RESULT'})
                 this.handlers?.logHandler?.log?.info(`[BINANCE][ORDER][MARKET_BUY] volume: ${volume}, orderRet: `, orderRet);
                 if (!orderRet || !orderRet.orderId || !orderRet.symbol) {
@@ -139,7 +140,7 @@ export default class BinanceHander {
                 const orderRes: IBinanceOrderResponse = orderRet;
                 if (orderRes.status === "FILLED") {
                     let trades: any = await this.binance?.futuresUserTrades(this.coinPairs[0], {orderId: orderRet.orderId});
-                    let fee = parseFloat((parseFloat(orderRes.cumQuote) * (this.exchnageCoinInfos.get(this.coinPairs[0])?.takerFee ?? 0) * 0.01).toFixed(8));
+                    let fee = wrapNumber(parseFloat((parseFloat(orderRes.cumQuote) * (this.exchnageCoinInfos.get(this.coinPairs[0])?.takerFee ?? 0) * 0.01).toFixed(8)));
                     if (trades?.length > 0 && trades[0].orderId === orderRes.orderId && trades[0].commissionAsset === "USDT") {
                         fee = parseFloat(trades[0].commission);
                     }
@@ -178,8 +179,9 @@ export default class BinanceHander {
     public orderMarketSell = async (volume: number, jobWorkerId?: string) => {        
         return new Promise(async (resolve) => {
             try {
-                let orderRet: any;            
-                volume = this.binance?.roundStep(volume, this.exchnageCoinInfos.get(this.coinPairs[0])?.stepSize)
+                let orderRet: any;  
+                // roundStep(2.7)=2.6 
+                // volume = wrapNumber(this.binance?.roundStep(volume, this.exchnageCoinInfos.get(this.coinPairs[0])?.stepSize));
                 orderRet = await this.binance?.futuresMarketSell(this.coinPairs[0], volume, {newOrderRespType: 'RESULT'});            
                 this.handlers?.logHandler?.log?.info(`[BINANCE][ORDER][MARKET_SELL] volume: ${volume}, orderRet: `, orderRet);
                 if (!orderRet || !orderRet.orderId || !orderRet.symbol) {
@@ -189,7 +191,7 @@ export default class BinanceHander {
                 const orderRes: IBinanceOrderResponse = orderRet;
                 if (orderRes.status === "FILLED") {
                     let trades: any = await this.binance?.futuresUserTrades(this.coinPairs[0], {orderId: orderRet.orderId});
-                    let fee = parseFloat((parseFloat(orderRes.cumQuote) * (this.exchnageCoinInfos.get(this.coinPairs[0])?.takerFee ?? 0) * 0.01).toFixed(8));
+                    let fee = wrapNumber(parseFloat((parseFloat(orderRes.cumQuote) * (this.exchnageCoinInfos.get(this.coinPairs[0])?.takerFee ?? 0) * 0.01).toFixed(8)));
                     if (trades?.length > 0 && trades[0].orderId === orderRes.orderId && trades[0].commissionAsset === "USDT") {
                         fee = parseFloat(trades[0].commission);
                     }
@@ -263,8 +265,8 @@ export default class BinanceHander {
 
             this.accountInfo = {
                 coinPair: account.positions?.length > 0? account.positions[0].symbol as COIN_PAIR: COIN_PAIR.NONE,
-                qty: account.positions?.length > 0? Math.abs(parseFloat(account.positions[0].positionAmt)): 0,
-                initialMargin: account.positions?.length >0? parseFloat(account.positions[0].initialMargin): 0,
+                qty: wrapNumber(account.positions?.length > 0? Math.abs(parseFloat(account.positions[0].positionAmt)): 0),
+                initialMargin: account.positions?.length > 0? parseFloat(account.positions[0].initialMargin): 0,
                 avaliableBalance: parseFloat(account.availableBalance),
                 currencyType: CURRENCY_TYPE.USDT,
                 pnl: account.positions?.length > 0 ? parseFloat(account.positions[0].unrealizedProfit): 0,

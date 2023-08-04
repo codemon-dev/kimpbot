@@ -6,6 +6,7 @@ import { COMPLETE_TYPE, IJobWorker, IJobWorkerInfo, ITradeJobInfo } from "../../
 import { IPC_CMD } from "../../constants/ipcCmd";
 import { IUserInfo } from "../../interface/IUserInfo";
 import TradeJobWorker from "../jobWorkers/tradeJobWorker";
+import { wrapNumber } from "../../util/tradeUtil";
 
 export default class jobWorkerHandler {
     private handlers: Handlers | undefined;
@@ -159,7 +160,7 @@ export default class jobWorkerHandler {
                     newJobWorker.tradeJobInfos.forEach((tradeJobInfo: ITradeJobInfo, index: number) => {
                         if (tradeJobInfo.enterCompleteType === COMPLETE_TYPE.SUCCESS && tradeJobInfo.exitCompleteType === COMPLETE_TYPE.NONE) {
                             newJobWorker.tradeJobInfos[index].targetExitPrimium = exitTargetPrimium;
-                            newJobWorker.tradeJobInfos[index].targetExitTheTher = tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01));
+                            newJobWorker.tradeJobInfos[index].targetExitTheTher = wrapNumber(tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01)));
                         }
                     })                    
                     await this.handlers?.databaseHandler?.jobworkerDBApi?.updateJobWorker(newJobWorker)
@@ -169,7 +170,7 @@ export default class jobWorkerHandler {
                     tradeJobInfos.forEach(async(tradeJobInfo: ITradeJobInfo, index: number) => {
                         if (tradeJobInfo.enterCompleteType === COMPLETE_TYPE.SUCCESS && tradeJobInfo.exitCompleteType === COMPLETE_TYPE.NONE) {
                             tradeJobInfos[index].targetExitPrimium = exitTargetPrimium;
-                            tradeJobInfos[index].targetExitTheTher = tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01));
+                            tradeJobInfos[index].targetExitTheTher = wrapNumber(tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01)));
                         }
                         await this.handlers?.databaseHandler?.tradeJobInfoDBApi?.updateTradeJobInfo(tradeJobInfos[index])
                     })
@@ -182,7 +183,7 @@ export default class jobWorkerHandler {
                     jobWorkerInfoObj.tradeJobInfos.forEach((tradeJobInfo: ITradeJobInfo, index2: number) => {
                         if (tradeJobInfo.enterCompleteType === COMPLETE_TYPE.SUCCESS && tradeJobInfo.exitCompleteType === COMPLETE_TYPE.NONE) {
                             this.jobWorkerInfos[index1].tradeJobInfos[index2].targetExitPrimium = exitTargetPrimium;
-                            this.jobWorkerInfos[index1].tradeJobInfos[index2].targetExitTheTher = tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01));
+                            this.jobWorkerInfos[index1].tradeJobInfos[index2].targetExitTheTher = wrapNumber(tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01)));
                         }
                     }) 
                 }
