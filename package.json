@@ -1,7 +1,7 @@
 {
   "name": "kimplab.bot",
   "author": "kimpLab <kimpLab.help@gmail.com>",
-  "version": "0.9.8",
+  "version": "0.9.81",
   "description": "This is kimchi primium trading bot.",
   "main": ".webpack/main",
   "scripts": {

@@ -184,11 +184,8 @@ export default class TradeJobWorker {
                 return true;
         }
         let enteredBalance = this.getEnteredBalance();
-        let exchange2Balance = coinInfo2.accountInfo.avaliableBalance * coinInfo2.accountInfo.leverage * currencyInfo.price;
-        // exchange1이 balance가 더 크면 exchage2는 90프로만 사용하도록 함.
-        if (coinInfo1.accountInfo.avaliableBalance >= exchange2Balance) {
-            exchange2Balance = exchange2Balance * 0.9;
-        }
+        // exchage2는 90프로만 사용하도록 함.
+        let exchange2Balance = coinInfo2.accountInfo.avaliableBalance * coinInfo2.accountInfo.leverage * currencyInfo.price * 0.9;
         let avaliableBalance: number = Math.min(coinInfo1.accountInfo.avaliableBalance, exchange2Balance);
         let maxBalance: number = this.jobWorkerInfo.config.maxInputAmount - enteredBalance;
         avaliableBalance = Math.min(avaliableBalance, maxBalance);
@@ -687,7 +684,7 @@ export default class TradeJobWorker {
         }
 
         let index = 0;
-        while(true) {
+        while(true) {            
             // 최소구매금액 보다 작으면 break;            
             this.handlers?.logHandler?.log?.info(`[enterPosition][spiltOrderIndex: ${index}] remainedAmount: ${remainedAmount} spiltAmount: ${spiltAmount}`);
             this.handlers?.logHandler?.log?.info(`[enterPosition][spiltOrderIndex: ${index}] remainedBalance_1: ${remainedBalance_1}, remainedBalance_2: ${remainedBalance_2}`);
@@ -700,7 +697,7 @@ export default class TradeJobWorker {
             }            
             
             let orderAmount = 0;
-            if (remainedAmount < 2 * spiltAmount) {
+            if (remainedAmount < spiltAmount + (minTradingInfo.minAmount * 2)) {
                 orderAmount = remainedAmount;
                 isLastOrder = true;
             } else {
@@ -766,9 +763,13 @@ export default class TradeJobWorker {
             if (isLastOrder === true || subProcessRet?.isSuccess === false) {
                 break;
             }
-            remainedAmount = remainedAmount - (tradeJobInfo.enterTradeStatus.totalVolume_1 + tradeJobInfo.enterTradeStatus.totalFee_1);
-            remainedBalance_1 = subProcessRet.tradeInfo_1.avaliableBalance;
-            remainedBalance_2 = subProcessRet.tradeInfo_2.avaliableBalance * coinInfo2.accountInfo.leverage;
+            remainedAmount -= ((subProcessRet.tradeInfo_1?.totalVolume ?? 0) + (subProcessRet.tradeInfo_1?.totalFee ?? 0));
+            remainedBalance_1 = (subProcessRet.tradeInfo_1?.avaliableBalance ?? 0);
+            remainedBalance_2 = (subProcessRet.tradeInfo_2?.avaliableBalance ?? 0) * coinInfo2.accountInfo.leverage;
+            if (amount <= tradeJobInfo.enterTradeStatus.totalVolume_1 + tradeJobInfo.enterTradeStatus.totalFee_1) {
+                this.handlers?.logHandler?.log?.error(`[enterPosition][spiltOrderIndex: ${index}] force stop enterPosition. amount: ${amount}, tradeJobInfo.enterTradeStatus.totalVolume_1 + tradeJobInfo.enterTradeStatus.totalFee_1: ${tradeJobInfo.enterTradeStatus.totalVolume_1 + tradeJobInfo.enterTradeStatus.totalFee_1}`);
+                break;
+            }
             index++;
         }
 
@@ -859,7 +860,7 @@ export default class TradeJobWorker {
                 return;
             }
             let tradeInfo_2: ITradeInfo = res_2 as ITradeInfo;
-            this.handlers?.logHandler?.log?.info("[enterSubProcess][spiltOrderIndex: ${index}] tradeInfo_2: ", tradeInfo_2);
+            this.handlers?.logHandler?.log?.info(`[enterSubProcess][spiltOrderIndex: ${index}] tradeInfo_2: `, tradeInfo_2);
             ret = {
                 isSuccess: true,
                 tradeInfo_1, 
@@ -888,21 +889,32 @@ export default class TradeJobWorker {
 
         const currencyPrice = this.currencyInfo.price;
         let remainedQty_1 = tradeJobInfo.enterTradeStatus.totalQty_1;
-        let remainedQty_2 = tradeJobInfo.enterTradeStatus.totalQty_2;
-        if (remainedQty_1 < minTradingInfo.minQty || remainedQty_2 < minTradingInfo.minQty) {
-            this.handlers?.logHandler?.log?.error(`exitPosition is something wrong: minQty: ${minTradingInfo.minQty}, remainedQty_1: ${remainedQty_1}, remainedQty_2: ${remainedQty_2}`);
+        let remainedQty_2 = tradeJobInfo.enterTradeStatus.totalQty_2;        
+        const minQty_1 = minTradingInfo.minAmount / this.coinInfo1.buyPrice
+        const minQty_2 = minTradingInfo.minAmount / (this.coinInfo2.sellPrice * this.currencyInfo.price)
+        const minQty = Math.max(minQty_1, minQty_2);
+        this.handlers?.logHandler?.log?.info(`minQty: ${minQty}, minQty_1: ${minQty_1}, minQty_2: ${minQty_2}`);
+        if (remainedQty_1 < minQty || remainedQty_2 < minQty) {
+            this.handlers?.logHandler?.log?.error(`exitPosition is something wrong: minQty: ${minQty}, remainedQty_1: ${remainedQty_1}, remainedQty_2: ${remainedQty_2}`);
             return;
         }
         let index = 0;
-        let spiltQty_1 = Math.max(remainedQty_1 / this.jobWorkerInfo.config.numOfSplitTrade, minTradingInfo.minQty);
-        let spiltQty_2 = Math.max(remainedQty_2 / this.jobWorkerInfo.config.numOfSplitTrade, minTradingInfo.minQty);
+        let spiltQty_1 = Math.max(remainedQty_1 / this.jobWorkerInfo.config.numOfSplitTrade, minQty);        
+        let spiltQty_2 = Math.max(remainedQty_2 / this.jobWorkerInfo.config.numOfSplitTrade, minQty);
+        spiltQty_1 = Math.floor(spiltQty_1 / minQty) * minQty
+        spiltQty_2 = Math.floor(spiltQty_2 / minQty) * minQty
+        this.handlers?.logHandler?.log?.info(`minQty: ${minQty}, remainedQty_1: ${remainedQty_1}, remainedQty_2: ${remainedQty_1}, spiltQty_1: ${spiltQty_1}, spiltQty_2: ${spiltQty_2}`);
+        if (spiltQty_1 === 0 || spiltQty_1 === 0) {
+            this.handlers?.logHandler?.log?.error(`exitPosition is something wrong: minQty: ${minQty}, remainedQty_1: ${remainedQty_1}, remainedQty_2: ${remainedQty_1}, spiltQty_1: ${spiltQty_1}, spiltQty_2: ${spiltQty_2}`);
+            return;
+        }
         while(true) {
             let qty_1= spiltQty_1;
             let qty_2= spiltQty_2;
-            if (remainedQty_1 < spiltQty_1 * 2) {
+            if (remainedQty_1 < spiltQty_1 + (minQty * 2)) {
                 qty_1 = remainedQty_1   
             }
-            if (remainedQty_2 < spiltQty_2 * 2) {
+            if (remainedQty_2 < spiltQty_2 + (minQty * 2)) {
                 qty_2 = remainedQty_2
             }
             let ret: any = await this.exitSubProcess(qty_1, qty_2, index)
@@ -938,7 +950,7 @@ export default class TradeJobWorker {
             }
             remainedQty_1 -= qty_1;
             remainedQty_2 -= qty_2;
-            if (remainedQty_1 < spiltQty_1 || remainedQty_2 < spiltQty_2) {
+            if (remainedQty_1 < minQty || remainedQty_2 < minQty) {
                 break;
             }
         }
