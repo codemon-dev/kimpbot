@@ -189,8 +189,8 @@ export default class UpbitHandler {
                                 timestamp: orderTimestamp,
                             }
                             orderInfos.push(orderInfo);
-                            funds += parseFloat(trade.funds);
-                            qty += parseFloat(trade.volume);
+                            funds = wrapNumber(funds + parseFloat(trade.funds));
+                            qty = wrapNumber(qty + parseFloat(trade.volume));
                         });
                     }
                     const accountInfo = await this.fetchBalance();
@@ -255,8 +255,8 @@ export default class UpbitHandler {
                                 timestamp: orderTimestamp,
                             }
                             orderInfos.push(orderInfo);
-                            funds += parseFloat(trade.funds);
-                            qty += parseFloat(trade.volume);
+                            funds = wrapNumber(funds + parseFloat(trade.funds));
+                            qty = wrapNumber(qty + parseFloat(trade.volume));
                         });
                     }
                     const accountInfo = await this.fetchBalance();

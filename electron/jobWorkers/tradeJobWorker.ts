@@ -296,13 +296,13 @@ export default class TradeJobWorker {
         return true;
     }
 
-    private processExit = async (coinInfo1: CoinInfo, coinInfo2: CoinInfo, currencyInfo: ICurrencyInfo) => {
+    private processExit = async () => {
         if (this.exitCnt > 3) {
             return true;
         }
         if (!this.exchangeCoinInfo1 || !this.exchangeCoinInfo2 
-            || !coinInfo1 || !coinInfo2 || !currencyInfo
-            || !coinInfo1.accountInfo || !coinInfo2.accountInfo) {
+            || !this.coinInfo1 || !this.coinInfo2 || !this.currencyInfo
+            || !this.coinInfo1.accountInfo || !this.coinInfo2.accountInfo) {
                 return true;
         }
         
@@ -311,7 +311,13 @@ export default class TradeJobWorker {
             return true;
         }
 
+        let ret = true;
+
         for (const tradeJobInfo of this.jobWorkerInfo.tradeJobInfos) {
+            let coinInfo1 = _.cloneDeep(this.coinInfo1)
+            let coinInfo2 = _.cloneDeep(this.coinInfo2)
+            let currencyInfo = _.cloneDeep(this.currencyInfo)
+            this.handlers?.logHandler?.log?.debug(`exitCompleteType: ${tradeJobInfo.exitCompleteType}, enterCompleteType: ${tradeJobInfo.enterCompleteType}`);
             if (tradeJobInfo.exitCompleteType !== COMPLETE_TYPE.NONE) {
                 continue;
             }
@@ -330,46 +336,47 @@ export default class TradeJobWorker {
             if (avgSellPrice1 < 0 || avgBuyPrice1 < 0 || avgSellPrice2 < 0 || avgBuyPrice2 < 0) {
                 return false;
             }
+
+            // let exchane1FakeTradePrice = wrapNumber(Math.ceil(coinInfo1.price * 1.2));    // 20프로 위 가격 매도
+            // exchane1FakeTradePrice = convertExchangeOrederPrice(this.exchange1Handler?.exchange?? EXCHANGE.NONE, exchane1FakeTradePrice);
+            // let exchane1FakeTradeQty = wrapNumber(Math.ceil((this.exchangeCoinInfo1.minNotional / exchane1FakeTradePrice) * 1000000) / 1000000);    //20프로 아래 가격
+            // // this.handlers?.logHandler?.log?.debug("exchane1FakeTradePrice: ", exchane1FakeTradePrice)
+            // // this.handlers?.logHandler?.log?.debug("exchane1FakeTradeVolume: ", exchane1FakeTradeQty)
+            // let exchane2FakeTradePrice = wrapNumber(Math.ceil(coinInfo2.price * 0.8));    // 20프로 아래 가격 long
+            // let exchane2FakeTradeQty = wrapNumber(Math.max(this.exchangeCoinInfo2.minQty, this.exchangeCoinInfo2.minNotional / exchane2FakeTradePrice))
+
+            // // fake 거래로 거래 확인.                
+            // let promises: any = []
+            // //promises.push(this.exchange1Handler?.checkFakeTrade(ORDER_BID_ASK.ASK, exchane1FakeTradeQty, exchane1FakeTradePrice));
+            // promises.push(this.exchange2Handler?.checkFakeTrade(ORDER_BID_ASK.BID, exchane2FakeTradeQty, exchane2FakeTradePrice));
+            // let promisesRet = await Promise.all(promises);                
+            // for (const item of promisesRet) {
+            //     this.handlers?.logHandler?.log?.info(`checkFakeTrade. promisesRet: ${item}`)
+            //     if (item === false) {
+            //         this.handlers?.logHandler?.log?.error("fail fakeTrade. skip processJobWorker")
+            //         return false;
+            //     }
+            // }
+
+            // 현재 balance와 계산하고 있는 balance가 다르면 5초동안은 jopProcess skip 함.
+            const curAccountInfo1: ACCOUNT_INFO = await this.exchange1Handler?.fetchBalance();                
+            const curAccountInfo2: ACCOUNT_INFO = await this.exchange2Handler?.fetchBalance();
+
+            if (!coinInfo1.accountInfo || await this.isSameAccountInfo(coinInfo1.accountInfo, curAccountInfo1) === false) {
+                this.handlers?.logHandler?.log?.error("AccountInfo1 is not same. skip process.")                    
+                return false;
+            }
+            // binance는 가겨에 따라 avaliableBalance가 계속 바뀌어서 사용 불가.            
+            // if (await this.isSameAccountInfo(coinInfo2.accountInfo, curAccountInfo2) === false) {
+            //     this.handlers?.logHandler?.log?.error("AccountInfo2 is not same. skip process.")
+            //     return false;
+            // }
+            
             const curExitPrimium: number = calculatePrimium(avgBuyPrice1, avgSellPrice2, currencyInfo.price);
             const curThether: number = calculateTether(curExitPrimium, currencyInfo.price);
             
             if (tradeJobInfo.targetExitTheTher <= curThether) {                
-                this.handlers?.logHandler?.log?.debug(`curExitPrimium: ${curExitPrimium}, curThether: ${curThether}`);
-                // let exchane1FakeTradePrice = wrapNumber(Math.ceil(coinInfo1.price * 1.2));    // 20프로 위 가격 매도
-                // exchane1FakeTradePrice = convertExchangeOrederPrice(this.exchange1Handler?.exchange?? EXCHANGE.NONE, exchane1FakeTradePrice);
-                // let exchane1FakeTradeQty = wrapNumber(Math.ceil((this.exchangeCoinInfo1.minNotional / exchane1FakeTradePrice) * 1000000) / 1000000);    //20프로 아래 가격
-                // // this.handlers?.logHandler?.log?.debug("exchane1FakeTradePrice: ", exchane1FakeTradePrice)
-                // // this.handlers?.logHandler?.log?.debug("exchane1FakeTradeVolume: ", exchane1FakeTradeQty)
-                // let exchane2FakeTradePrice = wrapNumber(Math.ceil(coinInfo2.price * 0.8));    // 20프로 아래 가격 long
-                // let exchane2FakeTradeQty = wrapNumber(Math.max(this.exchangeCoinInfo2.minQty, this.exchangeCoinInfo2.minNotional / exchane2FakeTradePrice))
-
-                // // fake 거래로 거래 확인.                
-                // let promises: any = []
-                // //promises.push(this.exchange1Handler?.checkFakeTrade(ORDER_BID_ASK.ASK, exchane1FakeTradeQty, exchane1FakeTradePrice));
-                // promises.push(this.exchange2Handler?.checkFakeTrade(ORDER_BID_ASK.BID, exchane2FakeTradeQty, exchane2FakeTradePrice));
-                // let promisesRet = await Promise.all(promises);                
-                // for (const item of promisesRet) {
-                //     this.handlers?.logHandler?.log?.info(`checkFakeTrade. promisesRet: ${item}`)
-                //     if (item === false) {
-                //         this.handlers?.logHandler?.log?.error("fail fakeTrade. skip processJobWorker")
-                //         return false;
-                //     }
-                // }
-
-                // 현재 balance와 계산하고 있는 balance가 다르면 5초동안은 jopProcess skip 함.
-                const curAccountInfo1: ACCOUNT_INFO = await this.exchange1Handler?.fetchBalance();                
-                const curAccountInfo2: ACCOUNT_INFO = await this.exchange2Handler?.fetchBalance();
-
-                if (await this.isSameAccountInfo(coinInfo1.accountInfo, curAccountInfo1) === false) {
-                    this.handlers?.logHandler?.log?.error("AccountInfo1 is not same. skip process.")                    
-                    return false;
-                }
-
-                // binance는 가겨에 따라 avaliableBalance가 계속 바뀌어서 사용 불가.            
-                // if (await this.isSameAccountInfo(coinInfo2.accountInfo, curAccountInfo2) === false) {
-                //     this.handlers?.logHandler?.log?.error("AccountInfo2 is not same. skip process.")
-                //     return false;
-                // }
+                this.handlers?.logHandler?.log?.debug(`curExitPrimium: ${curExitPrimium}, curThether: ${curThether}`);                
                 
                 this.handlers?.logHandler?.log?.info("exitTargetPrimium is satisfied. start exitPosition.");
                 const minTradingInfo: IMinTradingInfo = this.calculateMinTradingInfo();
@@ -468,7 +475,7 @@ export default class TradeJobWorker {
                 this.lock_processJobWoker?.release();
                 return;
             }
-            let ret2 = await this.processExit(coinInfo1, coinInfo2, currencyInfo);            
+            let ret2 = await this.processExit();
             if (ret2 === false) {
                 setTimeout(() => {
                     this.lock_processJobWoker?.release();
@@ -922,14 +929,14 @@ export default class TradeJobWorker {
                 this.handlers?.logHandler?.log?.info("tradeInfo_1: ", subProcessRet.tradeInfo_1);
                 this.handlers?.logHandler?.log?.info("tradeInfo_2: ", subProcessRet.tradeInfo_2);
                 tradeJobInfo.exitTradeStatus.timestamp = Date.now();
-                tradeJobInfo.exitTradeStatus.totalVolume_1 = wrapNumber(tradeJobInfo.exitTradeStatus.totalVolume_1 + ((subProcessRet.tradeInfo_1?.totalVolume ?? 0) + (subProcessRet.tradeInfo_1_1?.totalVolume ?? 0)));
-                tradeJobInfo.exitTradeStatus.totalQty_1 = wrapNumber(tradeJobInfo.exitTradeStatus.totalQty_1 + ((subProcessRet.tradeInfo_1?.totalQty ?? 0) + (subProcessRet.tradeInfo_1_1?.totalQty ?? 0)));
-                tradeJobInfo.exitTradeStatus.totalFee_1 = wrapNumber(tradeJobInfo.exitTradeStatus.totalFee_1 + ((subProcessRet.tradeInfo_1?.totalFee ?? 0) + (subProcessRet.tradeInfo_1_1?.totalFee ?? 0)));
+                tradeJobInfo.exitTradeStatus.totalVolume_1 = wrapNumber(tradeJobInfo.exitTradeStatus.totalVolume_1 + (subProcessRet.tradeInfo_1?.totalVolume ?? 0));
+                tradeJobInfo.exitTradeStatus.totalQty_1 = wrapNumber(tradeJobInfo.exitTradeStatus.totalQty_1 + (subProcessRet.tradeInfo_1?.totalQty ?? 0));
+                tradeJobInfo.exitTradeStatus.totalFee_1 = wrapNumber(tradeJobInfo.exitTradeStatus.totalFee_1 + (subProcessRet.tradeInfo_1?.totalFee ?? 0));
                 tradeJobInfo.exitTradeStatus.avgPrice_1 = wrapNumber(tradeJobInfo.exitTradeStatus.totalVolume_1 / tradeJobInfo.exitTradeStatus.totalQty_1);
 
-                tradeJobInfo.exitTradeStatus.totalVolume_2 = wrapNumber(tradeJobInfo.exitTradeStatus.totalVolume_2 + subProcessRet.tradeInfo_2?.totalVolume ?? 0)
-                tradeJobInfo.exitTradeStatus.totalQty_2 = wrapNumber(tradeJobInfo.exitTradeStatus.totalQty_2 + subProcessRet.tradeInfo_2?.totalQty ?? 0)
-                tradeJobInfo.exitTradeStatus.totalFee_2 = wrapNumber(tradeJobInfo.exitTradeStatus.totalFee_2 + subProcessRet.tradeInfo_2?.totalFee ?? 0)
+                tradeJobInfo.exitTradeStatus.totalVolume_2 = wrapNumber(tradeJobInfo.exitTradeStatus.totalVolume_2 + (subProcessRet.tradeInfo_2?.totalVolume ?? 0))
+                tradeJobInfo.exitTradeStatus.totalQty_2 = wrapNumber(tradeJobInfo.exitTradeStatus.totalQty_2 + (subProcessRet.tradeInfo_2?.totalQty ?? 0))
+                tradeJobInfo.exitTradeStatus.totalFee_2 = wrapNumber(tradeJobInfo.exitTradeStatus.totalFee_2 + (subProcessRet.tradeInfo_2?.totalFee ?? 0))
                 tradeJobInfo.exitTradeStatus.avgPrice_2 = wrapNumber(tradeJobInfo.exitTradeStatus.totalVolume_2 / tradeJobInfo.exitTradeStatus.totalQty_2);
 
                 if (subProcessRet.tradeInfo_1) {
@@ -946,8 +953,8 @@ export default class TradeJobWorker {
                 this.handlers?.logHandler?.log?.info("FAIL TO exitSubProcess");
                 break;
             }
-            remainedQty_1 -= qty_1;
-            remainedQty_2 -= qty_2;
+            remainedQty_1 = wrapNumber(remainedQty_1 - qty_1);
+            remainedQty_2 = wrapNumber(remainedQty_2 - qty_2);
             if (remainedQty_1 < minQty || remainedQty_2 < minQty) {
                 break;
             }
