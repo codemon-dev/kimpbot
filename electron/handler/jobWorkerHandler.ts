@@ -59,13 +59,14 @@ export default class jobWorkerHandler {
                 jobWorkerInfos.push(jobWorkerInfo);
             }
         }
+        this.jobWorkerInfos = _.cloneDeep(jobWorkerInfos);
         this.handlers?.ipcHandler?.sendMessage(IPC_CMD.NOTIFY_JOB_WORKERINFOS, jobWorkerInfos);
         this.handlers?.ipcHandler?.sendMessage(IPC_CMD.NOTIFY_TRADE_JOB_INFOS, tradeJobInfos);
-        return jobWorkerInfos;
     }
 
 
     private startJobWorker = async (jobWorkerInfo: IJobWorkerInfo) => {
+
         if (!jobWorkerInfo._id) {
             this.handlers?.logHandler?.log?.error("jobWorkerInfo._id is empty. skip startJobWorker.")
             return;
@@ -74,11 +75,12 @@ export default class jobWorkerHandler {
             this.handlers?.logHandler?.log?.error(`${jobWorkerInfo._id} is already started. skip startJobWorker.`);
             return;
         }
-        const jobWorker = new TradeJobWorker(this.handlers!, jobWorkerInfo, this.notifyJobWorkerInfos, this.stopJobWorker)
-        await jobWorker.initialize();
+        this.handlers?.logHandler?.log?.info(`startJobWorker. jobWorkerInfo: `, jobWorkerInfo);
+        const tradeJobWorker = new TradeJobWorker(this.handlers!, jobWorkerInfo, this.notifyJobWorkerInfos, this.stopJobWorker)
+        await tradeJobWorker.initialize();
 
-        this.tradeJobWorkerMap.set(jobWorkerInfo._id, jobWorker);
-        const ret = await jobWorker.start();
+        this.tradeJobWorkerMap.set(jobWorkerInfo._id, tradeJobWorker);
+        const ret = await tradeJobWorker.start();
         if (ret === false) {
             this.stopJobWorker(jobWorkerInfo);
         }
@@ -115,8 +117,7 @@ export default class jobWorkerHandler {
     public registerIPCListeners = () =>{
         this.handlers?.ipcHandler?.registerIPCListeners(IPC_CMD.GET_ALL_JOB_WORKERS, async(evt) => {
             this.handlers?.logHandler?.log?.info("[IPC][GET_ALL_JOB_WORKERS]")
-            const jobWorkerInfos = await this.notifyJobWorkerInfos();
-            this.jobWorkerInfos = jobWorkerInfos ? _.cloneDeep(jobWorkerInfos): [];
+            await this.notifyJobWorkerInfos();
         });
 
         this.handlers?.ipcHandler?.registerIPCListeners(IPC_CMD.ADD_JOB_WORKER, async(evt, jobWorker: IJobWorker) => {
@@ -130,7 +131,7 @@ export default class jobWorkerHandler {
                 this.jobWorkerInfos.push(jobWorkerInfo);
                 await this.startJobWorker(jobWorkerInfo);
             }
-            this.notifyJobWorkerInfos();
+            this.notifyJobWorkerInfos();            
         });
 
         this.handlers?.ipcHandler?.registerIPCListeners(IPC_CMD.DELETE_JOB_WORKER, async(evt, id: string) => {
@@ -152,9 +153,7 @@ export default class jobWorkerHandler {
                 return;
             }
             let jobWorkers: IJobWorker[] = await this.handlers?.databaseHandler?.jobworkerDBApi?.getJobWorkerById(id);            
-
-            // tradeJobInfo.targetExitTheTher = tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01));
-            jobWorkers.forEach(async (jobWorkerObj: IJobWorker) => {
+            for (let jobWorkerObj of jobWorkers) {
                 if (jobWorkerObj._id === id) {
                     let newJobWorker: IJobWorker = {...jobWorkerObj, exitTargetPrimium: exitTargetPrimium}
                     newJobWorker.tradeJobInfos.forEach((tradeJobInfo: ITradeJobInfo, index: number) => {
@@ -166,7 +165,6 @@ export default class jobWorkerHandler {
                     await this.handlers?.databaseHandler?.jobworkerDBApi?.updateJobWorker(newJobWorker)
 
                     let tradeJobInfos: ITradeJobInfo[] = await this.handlers?.databaseHandler?.tradeJobInfoDBApi?.getTradeJobInfosByJobWorkerId(id)
-
                     tradeJobInfos.forEach(async(tradeJobInfo: ITradeJobInfo, index: number) => {
                         if (tradeJobInfo.enterCompleteType === COMPLETE_TYPE.SUCCESS && tradeJobInfo.exitCompleteType === COMPLETE_TYPE.NONE) {
                             tradeJobInfos[index].targetExitPrimium = exitTargetPrimium;
@@ -174,20 +172,21 @@ export default class jobWorkerHandler {
                         }
                         await this.handlers?.databaseHandler?.tradeJobInfoDBApi?.updateTradeJobInfo(tradeJobInfos[index])
                     })
-                    this.notifyJobWorkerInfos();
                 }
-            })
-            this.jobWorkerInfos.forEach((jobWorkerInfoObj: IJobWorkerInfo, index1: number) => {
+            }
+            for (let [index, jobWorkerInfoObj] of this.jobWorkerInfos.entries()) {
                 if (jobWorkerInfoObj._id === id) {
-                    this.jobWorkerInfos[index1] = {...jobWorkerInfoObj, exitTargetPrimium: exitTargetPrimium}
-                    jobWorkerInfoObj.tradeJobInfos.forEach((tradeJobInfo: ITradeJobInfo, index2: number) => {
+                    this.jobWorkerInfos[index] = {...jobWorkerInfoObj, exitTargetPrimium: exitTargetPrimium}
+                    jobWorkerInfoObj.tradeJobInfos?.forEach((tradeJobInfo: ITradeJobInfo, index2: number) => {
                         if (tradeJobInfo.enterCompleteType === COMPLETE_TYPE.SUCCESS && tradeJobInfo.exitCompleteType === COMPLETE_TYPE.NONE) {
-                            this.jobWorkerInfos[index1].tradeJobInfos[index2].targetExitPrimium = exitTargetPrimium;
-                            this.jobWorkerInfos[index1].tradeJobInfos[index2].targetExitTheTher = wrapNumber(tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01)));
+                            this.jobWorkerInfos[index].tradeJobInfos[index2].targetExitPrimium = exitTargetPrimium;
+                            this.jobWorkerInfos[index].tradeJobInfos[index2].targetExitTheTher = wrapNumber(tradeJobInfo.enteredThether * (1.0 + (tradeJobInfo.targetExitPrimium * 0.01)) / (1.0 + (tradeJobInfo.enteredPrimium * 0.01)));
                         }
                     }) 
                 }
-            })
+            }
+            this.handlers?.logHandler?.log?.info(`updateJobWorker. jobWorkerInfos: `, this.jobWorkerInfos);
+            this.notifyJobWorkerInfos();
         });
 
         this.handlers?.ipcHandler?.registerIPCListeners(IPC_CMD.START_JOB_WORKERS, async(evt, jobWorkers: IJobWorker[]) => {
@@ -231,7 +230,10 @@ export default class jobWorkerHandler {
 
             // 업데이트 되는 항목들은 다시 써줘야 함.
             this.jobWorkerInfos[idx].exitTargetPrimium = jobWorker.exitTargetPrimium;
+            this.handlers?.logHandler?.log?.info(`excuteIPCCmdForStartJobWorker. jobWorkerInfo: `, this.jobWorkerInfos[idx])
             this.startJobWorker(this.jobWorkerInfos[idx]);
+            resolve(true)
+            return;
         })
     }
 }

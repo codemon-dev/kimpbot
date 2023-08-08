@@ -28,10 +28,12 @@ export default class BinanceHander {
         this.handlers = handlers
         this.exchnageCoinInfos = new Map<COIN_PAIR, IExchangeCoinInfo>();
         this.binance = new Binance().options({
-            verbose: false,
+            verbose: true,
             test: false,
             useServerTime: true,
             hedgeMode: true,
+            keepAlive: true,
+            reconnect: true,
         });
         this.accountInfo = {
             coinPair: COIN_PAIR.NONE,

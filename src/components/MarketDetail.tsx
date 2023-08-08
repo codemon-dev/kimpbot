@@ -175,7 +175,7 @@ const MarketDetail = () => {
         const jobConfig: JobConfig = {
             maxInputAmount: parseInt(evt.target[0].value) ?? 0,
             leverage: parseInt(evt.target[1].value) ?? 0,
-            numOfSplitTrade: parseFloat(evt.target[2].value) ?? 10,
+            numOfSplitTrade: parseInt(evt.target[2].value) ?? 10,
             useCurrencyHedge: true,
             enterPriority: ENTER_PRIORITY.QTY,
         }
@@ -399,7 +399,7 @@ const MarketDetail = () => {
                                         label={`분할매수 횟수`}
                                         name={`splitTradeQty`}
                                         type={"number"}
-                                        step={"0.001"}
+                                        step={"1"}
                                         // value={accountInfo.apiKey}
                                         onChange={onChange}
                                     />
@@ -481,9 +481,9 @@ const MarketDetail = () => {
                                                 </Card.Description>
                                             </Card.Content>
                                             <Card.Content extra>
-                                                <div>        
+                                                <div style={{margin: 5, padding: 0}}>        
                                                     <Form onSubmit={onChangeExitTargetPrimium}>
-                                                        <Header as='h4'>탈출김프(%)</Header>
+                                                        <p>탈출김프(%)</p>
                                                         <Input              
                                                         type={"number"}
                                                         step={"0.01"} 
@@ -491,15 +491,15 @@ const MarketDetail = () => {
                                                         name={jobWorkerInfo._id} 
                                                         disabled={jobWorkerInfo.isStarted} 
                                                         // placeholder={`${jobWorkerInfo.exitTargetPrimium}`} 
-                                                        action={<Button type='submit'>변경</Button>}
+                                                        action={<Button disabled={jobWorkerInfo.isStarted} color="green" type='submit'>변경</Button>}
                                                         defaultValue={jobWorkerInfo.exitTargetPrimium}/>
                                                     </Form>                                  
                                                     
                                                 </div>
-                                                <div>
-                                                    <Button name={jobWorkerInfo._id} onClick={onclickJobworkerDelete}>삭제</Button>
-                                                    <Button name={jobWorkerInfo._id} onClick={onclickJobworkerStart}>시작</Button>
-                                                    <Button name={jobWorkerInfo._id} onClick={onclickJobworkerStop}>정지</Button>
+                                                <div style={{display: "flex", flex: 1}}>
+                                                    <Button fluid name={jobWorkerInfo._id} disabled={jobWorkerInfo.isStarted} color="red" onClick={onclickJobworkerDelete}>삭제</Button>
+                                                    <Button fluid name={jobWorkerInfo._id} disabled={jobWorkerInfo.isStarted} color="green" onClick={onclickJobworkerStart}>시작</Button>
+                                                    <Button fluid name={jobWorkerInfo._id} disabled={!jobWorkerInfo.isStarted} color="grey" onClick={onclickJobworkerStop}>정지</Button>
                                                 </div>
                                             </Card.Content>
                                         </Card>)

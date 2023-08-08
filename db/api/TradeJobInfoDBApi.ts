@@ -72,7 +72,7 @@ export default class TradeJobInfoDBApi {
             return null;
         }
         return new Promise((resolve, reject) => {
-            this.handlers?.logHandler?.log?.info(`updateTradeJobInfo. id:${tradeJobInfo._id}}`);
+            this.handlers?.logHandler?.log?.info(`updateTradeJobInfo. tradeJobInfo: `, tradeJobInfo);
             this.db?.update(
                 { _id: tradeJobInfo._id }, 
                 tradeJobInfo,

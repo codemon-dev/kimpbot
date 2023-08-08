@@ -48,7 +48,7 @@ export default class CurrencyHandler {
     this.intervalProcess();
     this.monitorInterval = setInterval(() => {
       this.intervalProcess();
-    }, 60 * 1000);
+    }, 10 * 1000);
   };
 
   public stop = () => {

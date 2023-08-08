@@ -72,7 +72,7 @@ export default class JobWokerDBApi {
             return null;
         }
         return new Promise((resolve, reject) => {
-            this.handlers?.logHandler?.log?.info(`updateJobWorker. id:${jobWoker._id}}`);
+            this.handlers?.logHandler?.log?.info(`updateJobWorker. jobWoker: `, jobWoker);
             this.db?.update(
                 { _id: jobWoker._id }, 
                 jobWoker,

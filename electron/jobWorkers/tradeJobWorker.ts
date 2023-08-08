@@ -317,7 +317,7 @@ export default class TradeJobWorker {
             let coinInfo1 = _.cloneDeep(this.coinInfo1)
             let coinInfo2 = _.cloneDeep(this.coinInfo2)
             let currencyInfo = _.cloneDeep(this.currencyInfo)
-            this.handlers?.logHandler?.log?.debug(`exitCompleteType: ${tradeJobInfo.exitCompleteType}, enterCompleteType: ${tradeJobInfo.enterCompleteType}`);
+            // this.handlers?.logHandler?.log?.debug(`exitCompleteType: ${tradeJobInfo.exitCompleteType}, enterCompleteType: ${tradeJobInfo.enterCompleteType}`);
             if (tradeJobInfo.exitCompleteType !== COMPLETE_TYPE.NONE) {
                 continue;
             }
